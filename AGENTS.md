@@ -25,6 +25,8 @@ For an agent, that means asking a person. Do not spend time chasing an empty cap
 
 **`CGWindowListCopyWindowInfo` cannot tell shown from hidden here either.** It keeps listing the window after `orderOut` has run and AppKit reports `isVisible == false`.
 
+**Which Spaces the band is on is measurable, and `collectionBehavior` is not the measurement.** It keeps the value it was set to while the window server's registration goes stale underneath it, which is how the band ends up on one Space with every value in the app reading correct. `CGSCopySpacesForWindows` says what the server actually thinks — see [docs/solutions/ui-bugs/canjoinallspaces-registration-goes-stale.md](docs/solutions/ui-bugs/canjoinallspaces-registration-goes-stale.md) for the call and the repair.
+
 **A capture cannot measure the display's corner either.** A rounded display photographs square: the mask is applied after the framebuffer. `--show-band` prints the radius it resolved per screen before it draws, which is as close to a machine-checkable answer as the band's shape gets. The radius comes from a private SkyLight call with a hand-derived signature that crashes if called wrong — read [docs/solutions/ui-bugs/display-corner-radius-has-no-public-api.md](docs/solutions/ui-bugs/display-corner-radius-has-no-public-api.md) before touching `DisplayCorners`.
 
 ## Animation in this app

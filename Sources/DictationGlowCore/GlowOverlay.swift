@@ -131,6 +131,7 @@ public final class GlowOverlay {
     for (window, band) in zip(windows, bands) {
       window.setFrame(band.frame, display: false)
       (window.contentView as? BandView)?.layoutBand(cornerRadius: band.cornerRadius)
+      Self.assertAllSpaces(on: window)
       if visible { window.orderFrontRegardless() }
     }
   }
@@ -148,6 +149,32 @@ public final class GlowOverlay {
       frame: screen.frame, cornerRadius: BandGeometry.cornerRadius(forReportedRadii: radii))
   }
 
+  /// On every Space, unmoved by Exposé, and over another app's full-screen window. The band
+  /// marks a microphone that is live regardless of which desktop is in front of it.
+  private static let allSpaces: NSWindow.CollectionBehavior = [
+    .canJoinAllSpaces, .stationary, .fullScreenAuxiliary,
+  ]
+
+  /// Says it again, to a window that has already been told.
+  ///
+  /// A window's membership drifts: a long-lived band window is registered with the window
+  /// server against the Spaces that existed when it was born, and it is not carried into one
+  /// created afterwards -- measured, on a band window that had been up for hours, as
+  /// membership in the current Space alone while a window created minutes earlier from the
+  /// same binary held both. From the outside that is exactly the reported symptom, and from
+  /// inside the process `collectionBehavior` still reads as `.canJoinAllSpaces`, so nothing
+  /// in the app can tell that the registration has gone stale.
+  ///
+  /// Cleared before it is set so the assignment is a change rather than a no-op: a setter
+  /// that short-circuits on an equal value would never reach the window server, which is the
+  /// one place the stale registration lives. Measured as harmless on a healthy window -- it
+  /// keeps every Space it had and does not blink -- and as an immediate repair on a drifted
+  /// one, whether it is ordered in at the time or not.
+  private static func assertAllSpaces(on window: NSWindow) {
+    window.collectionBehavior = []
+    window.collectionBehavior = allSpaces
+  }
+
   private static func makeWindow(profile: BandGeometry.Profile) -> NSWindow {
     let window = NSWindow(
       contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
@@ -161,7 +188,7 @@ public final class GlowOverlay {
     // Above the screen saver, so a full-screen app does not cover the one thing that has to
     // stay visible.
     window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
-    window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+    window.collectionBehavior = allSpaces
     // Opts out of the legacy capture path, where it works: a band at the screen's edge is
     // inside any capture that reaches it, and the process photographing is not always this
     // one. It is not capture protection -- since macOS 15.4 a window marked .none is still
