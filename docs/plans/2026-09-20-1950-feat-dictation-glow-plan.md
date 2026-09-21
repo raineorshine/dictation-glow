@@ -15,7 +15,10 @@ execution: code
 - **Objective:** A person dictating on this Mac knows at a glance, without looking away from what they are doing, whether native Dictation is currently listening — and notices the moment it stops on its own.
 - **Means:** The overlay is fixed: axshot's perimeter band, in Dictation blue, one frame per display. The detection mechanism is now fixed too — the distributed-notification pair `DictationIMNotificationStartedListening` and `DictationIMNotificationDidExitDictationMode`, verified across live sessions on 2026-09-20.
 - **Product authority:** The decisions below, settled in the brainstorm dialogue. `HANDOFF.md` is the originating brief.
-- **Open blockers:** None. The confirming signal was identified by direct observation rather than by the planned harness, so R19–R21 are now verification of the shipped detector rather than a phase that precedes it.
+- **Execution profile:** Swift, SwiftPM, no Xcode project. Built and signed by `build.sh` into `/Applications`. Verified by `swift test` for pure logic and by live gates against real Dictation for everything else.
+- **Who finishes it:** the implementing agent carries U1 through U8 and opens a pull request; merging stays with the user.
+- **Stop conditions:** stop if SwiftPM cannot produce a bundle-compatible binary (KTD1 is withdrawn and U1 falls back to `swiftc`), or if the notification names do not fire on the implementing machine — that invalidates R6 and the plan rather than the unit.
+- **Open blockers:** None that stop implementation. One product-scope conflict — whether R14, R16 and AE5 survive now that the app needs no TCC grant at all — is recorded in Outstanding Questions and rides to the pull request; U1 and U5 are written to work either way. The confirming signal was identified by direct observation rather than by the planned harness, so R19–R21 are now verification of the shipped detector rather than a phase that precedes it.
 
 ---
 
@@ -154,9 +157,13 @@ stateDiagram-v2
 
 ### Outstanding Questions
 
+**Non-blocking — carried to the pull request**
+
+- R14 and AE5 may now be vestigial, and nothing in planning can settle it. The detection finding removed every TCC grant the app was expected to need: the overlay needs none, the notifications need none, `SMAppService` needs none. R14 says the app shows the grant state of "each permission it requires", which is now plausibly an empty set, and AE5 is written as "Given Accessibility has been granted", which may never be true. R15's stable signing still earns its place — `SMAppService` registration is tied to the app's signed identity, so an ad-hoc rebuild would still break the login item — but R16's responsibility-disclaimed re-spawn exists only to attribute TCC grants, and with no grants to attribute it has no remaining purpose. Whether to drop R14, R16 and AE5, or keep a permissions surface against a future need, is a product-scope call. U5 and U1 are written to work either way; U5 omits the permission section when the set is empty rather than rendering it blank.
+
 **Deferred to Planning**
 
-- Fade durations.
+- Fade durations. Planning assumed 120ms in and 180ms out; see Assumptions.
 
 ### Sources and Research
 
@@ -176,3 +183,235 @@ stateDiagram-v2
 - Control Center's own attribution is `SystemStatus.framework` — `STDataAccessStatusDomain` publishing `STDataAccessAttribution` with `microphoneRecordingAttribution`, an `STAttributedEntity` naming the bundle, and start/end timestamps. It is gated behind the Apple-internal entitlements `com.apple.systemstatus.activityattribution` and `com.apple.systemstatus.domains`, which a third party cannot hold. Closed door, not a fragility tradeoff; recorded so it is not revisited.
 - `evbuildsnet/micstate` — the only field attempt at real attribution, via the public CoreAudio process-object properties. `Sources/MicState/MicPresence.swift:26-73`.
 - `naveen/miccheck`, `TuanBT/MacMute`, `oochernyshev/lockmic` — read for detection technique. MicCheck and MacMute watch `kAudioDevicePropertyDeviceIsRunningSomewhere` with no attribution; LockMic detects microphone activity not at all. MacMute watches every input device rather than only the default, and its `TeamsAccessibility.swift:178-187` shows how to force a full AX tree out of a Chromium app should that ever be needed.
+
+---
+
+## Planning Contract
+
+**Product Contract preservation:** unchanged. No requirement was edited, split, or renumbered during enrichment. One conflict between the Product Contract and the detection finding is recorded in Open Questions rather than resolved here, because resolving it would change product scope.
+
+### Key Technical Decisions
+
+- KTD1. Build with SwiftPM, not bare `swiftc`. `Package.swift` declares a `DictationGlowCore` library holding the pure logic and a thin `dictation-glow` executable; `build.sh` runs `swift build -c release`, assembles the `.app` bundle around the product, signs it, and installs it. axshot compiles a single file with `swiftc` because it is a single file; this app is several, and routing through SwiftPM is what makes `swift test` available to the edge state machine in KTD3 without standing up a second build system.
+- KTD2. Copy axshot's overlay window and band geometry rather than importing or linking it. The two apps share no code at runtime; axshot is a source to read, not a dependency (see Dependencies and Assumptions). Copying keeps `sharingType = .none`, the per-screen band, and the screen-parameter observer, which the Product Contract requires in R1 and R2. (session-settled: user-approved — chosen over building the overlay fresh: the window contract and its failure modes are already solved and documented there.) Governs R1, R2.
+- KTD3. The detector is a state machine over the notification stream, not a direct notification-to-visibility binding. `DidExitDictationMode` is not self-evidently a stop — R11a says a start sequence emits one — so the machine holds a pending-stop for the coalescing window and cancels it if a start notification follows. This is the piece that carries real logic, and it is the piece `swift test` covers. Governs R6, R7, R11a.
+- KTD4. Observe through `DistributedNotificationCenter.default()` and register each notification name explicitly, never a nil-name catch-all. A catch-all would receive every distributed notification on the system, which is both a privacy surface and a performance cost for an app that idles all day. Governs R6, R19.
+- KTD5. `SMAppService.mainApp` for the login item. Confirmed in use by axshot at `axshot.swift:5461` on this macOS with a locally self-signed app, which is the same signing posture this app will have. (session-settled: user-directed — chosen over an opt-in registration and over manual start only: an app that is not running is the one no-band cause the self-test cannot diagnose.) Governs R18.
+- KTD6. The event log is a bounded in-memory ring plus an append-only file under `~/Library/Logs/`. R19 needs a session that already failed to be diagnosable afterwards, so the record has to outlive the process; a ring alone would not, and an unbounded file would grow without limit on a login-item app. Governs R19, R13.
+- KTD7. The self-test drives the real detector, not a copy of it. It subscribes to the same state machine the overlay uses and reports what that machine saw. A self-test with its own observation path could pass while the live one is broken, which is the failure R12 exists to catch. Governs R12.
+
+### High-Level Technical Design
+
+Four components, one directed path from the system to the screen. The state machine is the only stateful piece.
+
+```mermaid
+flowchart LR
+    DIM["DictationIM<br/>(system)"] -->|distributed<br/>notifications| MON
+    MON["DictationMonitor<br/>observe + log"] --> SM
+    SM["EdgeMachine<br/>coalescing (R11a)"] -->|listening / idle| OV["GlowOverlay<br/>one window per screen"]
+    SM --> LOG["EventLog<br/>ring + file (KTD6)"]
+    SM --> ST["SelfTest<br/>(KTD7)"]
+    LOG --> MENU["Menu bar<br/>status + last confirmed"]
+    ST --> MENU
+```
+
+The edge machine's states and the one transition that is not obvious:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Listening: StartedListening
+    Listening --> PendingStop: DidExitDictationMode
+    PendingStop --> Listening: start notification within 150ms (R11a)
+    PendingStop --> Idle: window elapses
+```
+
+### Assumptions
+
+These are planning bets, not settled decisions. Each is cheap to reverse if implementation contradicts it.
+
+- The coalescing window in R11a is a constant, not adaptive. Both observed sessions fit well inside 150ms; a third that did not would move the constant, not the design.
+- Fade durations are 120ms in and 180ms out. The Product Contract left them open (Outstanding Questions); slightly slower out than in keeps the disappearance from reading as a flicker. Reversible in one constant each.
+- `swift build` is available without an Xcode project on this toolchain (Swift 6.4, Xcode 27). If SwiftPM cannot produce a bundle-compatible binary, U1 falls back to axshot's `swiftc` invocation and KTD1 is withdrawn, taking `swift test` with it.
+- No TCC permission is required for anything the app does. See the Open Question below — this is the assumption that makes R14 vestigial.
+
+### Sequencing
+
+U1 first: nothing can be granted, registered, or observed until the app is a signed bundle in `/Applications`. U2 and U3 are independent of each other and both depend only on U1, so either order works. U4 joins them. U5 through U7 depend on U4 because each needs something real to report on. U8 is verification and runs last.
+
+---
+
+## Implementation Units
+
+### U1. Signed app bundle and install script
+
+- **Goal:** A `.app` that launches as a menu bar accessory, signed with the shared local identity, installed to `/Applications`.
+- **Requirements:** R15, R16, R17
+- **Dependencies:** none
+- **Files:** `Package.swift`, `Sources/dictation-glow/main.swift`, `Sources/DictationGlowCore/` (empty placeholder), `build.sh`, `create-signing-cert.sh`, `.gitignore`
+- **Approach:**
+  1. Copy `create-signing-cert.sh` from axshot unchanged except for the identity default, keeping the `Axshot Local Signing` name so one keychain approval covers both apps.
+  2. `build.sh` runs `swift build -c release`, assembles `Contents/MacOS` and `Contents/Info.plist` around the product, signs with the identity, and installs to `/Applications`, warning on ad-hoc fallback exactly as axshot's does.
+  3. `Info.plist` sets `LSUIElement`, the bundle identifier, and `LSMinimumSystemVersion`.
+  4. `main.swift` sets `NSApp.setActivationPolicy(.accessory)` and runs an empty delegate, and re-spawns with responsibility disclaimed per KTD2's source.
+- **Patterns to follow:** axshot `build.sh`, `create-signing-cert.sh`, and `axshot.swift:719` for the disclaimed re-spawn.
+- **Execution note:** This is packaging. Prefer an install-and-launch smoke check over unit coverage.
+- **Test scenarios:** Test expectation: none — packaging and scaffolding, no behavior to assert. Verification is the smoke check below.
+- **Verification:** `build.sh` produces `/Applications/DictationGlow.app`; launching it puts an item in the menu bar and no icon in the Dock; `codesign -dv` reports the local identity rather than ad-hoc.
+
+### U2. Perimeter overlay
+
+- **Goal:** A band that can be shown and hidden on demand, drawn on every display.
+- **Requirements:** R1, R2, R3, R4, R5
+- **Dependencies:** U1
+- **Files:** `Sources/DictationGlowCore/GlowOverlay.swift`, `Sources/DictationGlowCore/BandGeometry.swift`, `Tests/DictationGlowCoreTests/BandGeometryTests.swift`
+- **Approach:**
+  1. Port axshot's `DriveFrame` window configuration: borderless, non-opaque, no shadow, `ignoresMouseEvents`, level above `.screenSaver`, `[.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]`, `sharingType = .none`.
+  2. Port `DriveFrameView`'s layer stack — a 4pt solid edge plus 16 concentric 1pt rings at quadratic alpha falloff — substituting `#0A84FF` for the pink, per KTD2 and R3.
+  3. Rebuild the band on `NSApplication.didChangeScreenParametersNotification`.
+  4. Expose `show()` and `hide()` that fade per the Assumptions, and nothing else — visibility policy belongs to U4.
+- **Patterns to follow:** axshot `axshot.swift:5577` and `axshot.swift:5702`.
+- **Test scenarios:**
+  - Covers R1. Given two screen frames of different heights, the geometry returns one band rect per screen and no rect covering the dead space beside the shorter one.
+  - Covers R1. Given one screen, the geometry returns exactly one band rect matching that screen's frame.
+  - Covers R4. Ring alpha falls monotonically from the innermost to the outermost ring and never exceeds the peak.
+  - Covers R3. The band colour resolves to `#0A84FF` regardless of the system appearance passed in.
+- **Verification:** A debug entry point shows the band on every attached display; it accepts no clicks, appears over a full-screen window, and does not appear in a screenshot taken while it is up.
+
+### U3. Dictation detector
+
+- **Goal:** A component that turns the notification stream into a listening/idle signal.
+- **Requirements:** R6, R7, R8, R9, R10, R11a
+- **Dependencies:** U1
+- **Files:** `Sources/DictationGlowCore/DictationMonitor.swift`, `Sources/DictationGlowCore/EdgeMachine.swift`, `Tests/DictationGlowCoreTests/EdgeMachineTests.swift`
+- **Approach:**
+  1. `DictationMonitor` registers the four observed `DictationIM…` names explicitly on `DistributedNotificationCenter.default()` per KTD4, and forwards each as a timestamped event.
+  2. `EdgeMachine` consumes those events and emits listening/idle per KTD3, holding a pending stop for the coalescing window in Assumptions.
+  3. The machine is pure over an injected clock so the coalescing window is testable without waiting.
+  4. Nothing here touches the overlay; the machine publishes state and U4 subscribes.
+- **Execution note:** The coalescing rule is the one piece with real logic and a known false-stop case. Write its tests first.
+- **Test scenarios:**
+  - Covers R6. `StartedListening` from idle emits listening.
+  - Covers R7, R8. `DidExitDictationMode` from listening, with no start following, emits idle once the window elapses.
+  - Covers R11a. `DidExitDictationMode` followed by `StartedListening` after 80ms emits no idle at all, and the state stays listening throughout.
+  - Covers R11a. `DidExitDictationMode` followed by `StartedListening` after 200ms emits idle, then listening.
+  - Covers R10. A notification name outside the registered set is ignored and changes no state.
+  - Edge: two `StartedListening` in a row emit listening once, not twice.
+  - Edge: `DidExitDictationMode` while already idle emits nothing.
+- **Verification:** With the app running, starting and stopping real Dictation moves the machine's published state in both directions, and the coalescing case appears in the log as a cancelled pending stop rather than a visible transition.
+
+### U4. Detector drives the overlay
+
+- **Goal:** The band is up exactly while the machine says listening.
+- **Requirements:** R4, R5, R6, F1, AE1, AE2, AE3
+- **Dependencies:** U2, U3
+- **Files:** `Sources/dictation-glow/AppDelegate.swift`, `Tests/DictationGlowCoreTests/VisibilityPolicyTests.swift`
+- **Approach:**
+  1. Subscribe the overlay to the machine's state on the main queue.
+  2. Fail closed per the Key Decision governing R6: the initial state is idle, and any state the machine cannot resolve leaves the band down.
+  3. Fade per U2's `show()` / `hide()`; no intermediate strengths, per R4.
+- **Test scenarios:**
+  - Covers AE3. Given the machine never emits listening, the overlay is never shown, whatever else happens on the audio system.
+  - Covers AE1. A listening-then-idle sequence shows then hides the band, in that order.
+  - Covers R4. A second listening while already listening does not re-trigger the fade.
+  - Integration, covers AE2. With an audio stream held open by another process for the whole sequence, the idle transition still hides the band — the overlay's visibility is bound to the machine, not to any audio state.
+- **Verification:** Real Dictation raises and lowers the band; a video call holding the microphone does not keep the band up past the Dictation stop.
+
+### U5. Menu bar and login item
+
+- **Goal:** A status item with the app's controls, and registration at login.
+- **Requirements:** R14, R18
+- **Dependencies:** U4
+- **Files:** `Sources/dictation-glow/MenuBar.swift`, `Sources/dictation-glow/LoginItem.swift`
+- **Approach:**
+  1. `NSStatusItem` with a menu; no window by default.
+  2. Register with `SMAppService.mainApp` on first run per KTD5, and expose a toggle reflecting `SMAppService.mainApp.status`, restoring the toggle and reporting the error when registration throws.
+  3. Permission rows per R14 render whatever the app actually requires — see the Open Question; if that set is empty, the section is omitted rather than shown empty.
+- **Patterns to follow:** axshot `axshot.swift:5461` for the login-item toggle and its error restore; `axshot.swift:4777` for the permission-row shape if any rows survive.
+- **Test scenarios:**
+  - Covers R18. First run with no prior registration calls register exactly once.
+  - Covers R18. A run where status is already `.enabled` does not re-register.
+  - Error path: `register()` throwing leaves the toggle in its prior state and surfaces the error text rather than failing silently.
+- **Verification:** The app appears under System Settings → General → Login Items; disabling it there is reflected in the menu on next open; a restart brings the app back with the band armed.
+
+### U6. Event log and last-confirmed record
+
+- **Goal:** A failed session is diagnosable after the fact, and the menu says when detection last worked.
+- **Requirements:** R13, R19
+- **Dependencies:** U4
+- **Files:** `Sources/DictationGlowCore/EventLog.swift`, `Tests/DictationGlowCoreTests/EventLogTests.swift`
+- **Approach:**
+  1. Every event the monitor forwards is recorded with a timestamp, whether or not it changed state, per KTD6.
+  2. Bounded ring in memory for the menu; append-only file under `~/Library/Logs/` for the after-the-fact case, with rotation at a fixed size.
+  3. The last completed listening→idle cycle updates the last-confirmed timestamp shown in the menu per R13.
+- **Test scenarios:**
+  - Covers R19. An event that changes no state is still recorded.
+  - Covers R13. A completed listening-then-idle cycle updates the last-confirmed timestamp; an incomplete one does not.
+  - Edge: the ring drops oldest first and never grows past its bound.
+  - Edge: the file rotates at its size limit without losing the most recent entries.
+- **Verification:** After a real Dictation session the log file contains both edges with timestamps, and the menu shows that session's time.
+
+### U7. Guided live self-test
+
+- **Goal:** The person can prove detection still works, on demand.
+- **Requirements:** R12, AE4
+- **Dependencies:** U4, U6
+- **Files:** `Sources/dictation-glow/SelfTest.swift`, `Tests/DictationGlowCoreTests/SelfTestTests.swift`
+- **Approach:**
+  1. The test subscribes to the live machine per KTD7, prompts the person to start Dictation, and waits with a timeout.
+  2. It reports, separately, whether the start was observed, whether the stop was observed, and the latency of each against the stop budget in Success Criteria.
+  3. On a miss it names what was not seen. There is no Apple-supported way to start Dictation programmatically, so the prompt is the mechanism, not a limitation to engineer around.
+  4. It never reports health from preconditions alone, per R12.
+- **Test scenarios:**
+  - Covers AE4. With no events arriving before the timeout, the result is a failure naming the unobserved start, not a pass.
+  - Covers R12. Both edges arriving inside the timeout produce a pass carrying both latencies.
+  - Edge: only the start arriving produces a partial result naming the missing stop, not a pass.
+  - Edge: a test run while a real Dictation session is already in progress is rejected or restarted cleanly rather than reading the in-flight session as its own result.
+- **Verification:** Running the self-test and dictating produces a pass with two latencies; running it and not dictating produces a named failure.
+
+### U8. Verify the unexercised cases and record the exposure
+
+- **Goal:** The two cases the signal has never been tried on are tried, and the undocumented dependency is written down.
+- **Requirements:** R20, R21
+- **Dependencies:** U7
+- **Files:** `README.md`, `docs/detection.md`
+- **Approach:**
+  1. Exercise each start path in R9 — Globe double-tap, Fn, a custom shortcut, the Edit menu — and record which notifications each produces.
+  2. Exercise a session with another application holding the microphone throughout, confirming AE2 against the real system rather than the test double in U4.
+  3. Write `docs/detection.md`: the notification names, the macOS version verified, the observed latencies, what breaks when a name changes, and that the self-test is how a break surfaces.
+- **Execution note:** These are live observations against the real system. Record what was seen, including anything that contradicts the plan.
+- **Test scenarios:** Test expectation: none — this unit is live verification and documentation. Its output is the record, and any contradiction it finds is a finding against U3.
+- **Verification:** `docs/detection.md` exists and names every start path with its observed result; a start path that did not produce the expected notification is recorded as a defect rather than omitted.
+
+---
+
+## Verification Contract
+
+This repo has no CI yet and no test runner beyond SwiftPM. These are the gates.
+
+| Gate | Command | Applies to | Signal |
+|---|---|---|---|
+| Unit tests | `swift test` | U2, U3, U4, U5, U6, U7 | All pass |
+| Build and sign | `./build.sh` | U1, all | Bundle produced and signed by the local identity, not ad-hoc |
+| Install smoke | launch `/Applications/DictationGlow.app` | U1, U5 | Menu bar item appears, no Dock icon |
+| Live detection | start and stop Dictation | U3, U4, U8 | Band follows both edges |
+| Self-test | menu → run self-test | U7 | Pass with two latencies |
+| Grant survival | rebuild, relaunch | U1 | Login-item registration survives the rebuild |
+
+`swift test` covers the pure logic only. Everything that touches `NSWindow`, `SMAppService`, or the live notification stream is verified by the live gates above, because those cannot be asserted without the real system.
+
+---
+
+## Definition of Done
+
+Global:
+
+- Every unit's verification passes.
+- `swift test` is green and covers the edge machine's coalescing case explicitly.
+- The band follows real Dictation in both directions, including a silence timeout.
+- The self-test passes, and fails correctly when detection is broken — verified by pointing the monitor at a notification name that does not exist.
+- `docs/detection.md` records the notification names, the verified macOS version, and the break signal.
+- No dead-end or experimental code from approaches that did not pan out remains in the diff.
+- The Open Question below is answered or explicitly carried forward; it is not silently resolved by omission.
+
+Per unit: the unit's own Verification line, plus its test scenarios written and passing where the unit is feature-bearing.
