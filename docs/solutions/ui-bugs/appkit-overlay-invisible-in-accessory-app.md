@@ -1,6 +1,7 @@
 ---
 title: AppKit overlay never appears because window.animator() does not run in an accessory app
 date: 2026-09-21
+last_updated: 2026-09-21
 category: ui-bugs
 module: overlay
 problem_type: ui_bug
@@ -9,6 +10,7 @@ symptoms:
   - "Overlay window reports the correct frame, level and alphaValue, and its layer holds every sublayer, but nothing is drawn on screen"
   - "The window stays ordered in after hide, because the fade-out completion that calls orderOut never fires"
   - "An empty screencapture looks like proof the overlay is broken"
+  - "CGWindowListCopyWindowInfo keeps listing the window after orderOut and after AppKit reports isVisible == false"
 root_cause: wrong_api
 resolution_type: code_fix
 severity: high
@@ -19,63 +21,89 @@ tags: [appkit, nswindow, lsuielement, core-animation, screencapture, verificatio
 
 ## Problem
 
-A borderless overlay window in an `LSUIElement` accessory app was faded in with `NSAnimationContext.runAnimationGroup` and `window.animator().alphaValue`. The animation never ran, so the window sat ordered in at alpha 0 — on screen and invisible. The same failure hid the other half: the fade-out's completion handler, which called `orderOut`, also never fired, so the window was never taken down.
+`GlowOverlay` draws a borderless band around every display in a menu-bar-only (`LSUIElement`) app that is never the active application. The band never appeared on screen, and — as a second symptom of the same root cause — the window never came back down after `hide()`.
 
 ## Symptoms
 
-- Every value AppKit reports is correct. The window is at its level across the full display frame, `alphaValue` is the target, the content view's layer exists and holds all its sublayers with the right frames and border widths.
-- Nothing is drawn.
-- After `hide()`, the window remains ordered in.
-- A `screencapture` taken while the overlay is up contains no trace of it, which reads as confirmation that the overlay is broken.
+- Every `NSWindow` value checked was correct: the frame covered the full display, `level` was `screenSaver + 1`, `alphaValue` reached its target, and `contentView?.layer` held all 17 sublayers (one 4pt edge plus 16 falloff rings, built in `BandView.build(on:)`, `GlowOverlay.swift:176-191`) at the right frames and border widths.
+- Nothing was drawn.
+- After `hide()`, the window stayed ordered in.
+- `screencapture`, taken while the band was on screen, showed no trace of it — and kept showing no trace of it through three unrelated changes, which is what made the capture look authoritative.
 
 ## What Didn't Work
 
-- **Removing the capture opt-out.** `sharingType` was switched from `.none` to `.readOnly` on the theory that the band was drawing and only being excluded from capture. The capture stayed empty.
-- **Lowering the window level.** The level was dropped from `screenSaver + 1` to `.floating`, on the theory that windows at or above the shielding level are excluded from some capture paths. The capture stayed empty.
-- **Creating the backing layer explicitly.** `wantsLayer = true` alone does not guarantee a layer for a view that is not yet in a window, and `addSublayer` on a nil layer is a silent no-op — a real hazard, and worth keeping ([`GlowOverlay.swift:161`](../../../Sources/DictationGlowCore/GlowOverlay.swift)), but it was not the cause here.
-- **Reading `CGWindowListCopyWindowInfo`.** It keeps listing the window after `orderOut` has run and AppKit reports `isVisible == false`, so it cannot be used to tell shown from hidden for this window class.
+Each of these targeted a real hypothesis about why a correctly-configured window might be excluded from capture. None was unreasonable to try. The mistake was continuing to trust the capture as the falsifying test after each one failed to change its output.
 
-None of these were the problem, and the capture stayed empty through all of them — because the capture was never evidence in the first place.
+1. **Removing the capture opt-out.** `sharingType` was `.none` (`GlowOverlay.swift:144`), documented as excluding a window from the legacy capture path. Switched to `.readOnly`; the capture stayed empty. This did surface a separate correction now recorded at `GlowOverlay.swift:139-144` and in `docs/detection.md`: since macOS 15.4 a window marked `.none` is still captured by ScreenCaptureKit, and Apple states no public API prevents capture. `.none` is kept, but it is not capture protection.
+2. **Lowering the window level.** Dropped from `screenSaver + 1` to `.floating`, on the theory that windows at or above the shielding level are excluded from some capture paths. The capture stayed empty. Restored to `screenSaver + 1` (`GlowOverlay.swift:137`), which is required anyway so a full-screen app cannot cover the band.
+3. **Creating the backing layer explicitly.** The theory: `wantsLayer = true` was set before the view was in a window, the layer never materialized, and every `addSublayer` was a silent no-op against `nil`. That is a real AppKit hazard and the guard is kept — the layer is constructed and assigned directly at `GlowOverlay.swift:161-162` rather than relying on lazy creation. But the layer and its 17 sublayers were already present and correctly framed before the change, so it was not the cause.
+4. **Reading `CGWindowListCopyWindowInfo` as a visibility oracle.** It kept listing the window after `orderOut(nil)` had run and `NSWindow.isVisible` already reported `false`. The window-server list and AppKit's notion of visibility diverge at exactly the moment that matters, so this cannot distinguish shown from hidden for this window class.
+
+A fifth issue compounded the confusion: earlier `open` launches had left orphaned app instances running, all subscribed to the same distributed notifications and all reacting to the same test sessions. Not a cause, but it made readings incoherent for a stretch. Rule it out first in any repeat — `pkill -f dictation-glow` before a manual run.
+
+None of the four moved the capture, because the band was rendering correctly the whole time. Its absence from `screencapture` and from `CGWindowListCopyWindowInfo` is a property of those tools against this window, not of the window.
 
 ## Solution
 
-Drive the fade with Core Animation on the view's own layer instead of AppKit's animator proxy, and time the order-out rather than hanging it off a completion block ([`GlowOverlay.swift:72-94`](../../../Sources/DictationGlowCore/GlowOverlay.swift)):
+The fade was driven by the animator proxy, with `alphaValue` set to `0` first and the animator relied on to raise it:
 
 ```swift
-// Before — never runs in an accessory app
+// Before — animator proxy, never runs in this app
 window.alphaValue = 0
 window.orderFrontRegardless()
 NSAnimationContext.runAnimationGroup { context in
   context.duration = duration
   window.animator().alphaValue = bandOpacity
 }
+```
 
-// After — the render server drives this regardless of who is active
-window.alphaValue = bandOpacity
+The fix moves the animation onto the content view's own `CALayer` and sets the model value directly before adding the animation — `show()` at `GlowOverlay.swift:41-52`, `hide()` at `:59-70`, `fade()` at `:72-95`:
+
+```swift
+// show(), GlowOverlay.swift:41-52
+window.alphaValue = Timing.bandOpacity
 window.orderFrontRegardless()
 window.contentView?.layer?.opacity = 1
+fade(window, from: 0, to: 1, duration: duration)
+
+// fade(), GlowOverlay.swift:72-95
+CATransaction.begin()
 let animation = CABasicAnimation(keyPath: "opacity")
 animation.fromValue = from
 animation.toValue = to
 animation.duration = duration
 layer.add(animation, forKey: "bandFade")
+CATransaction.commit()
+if let completion {
+  DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: completion)
+}
 ```
 
-The layer's model value is set directly before the animation is added, so the end state is correct whether or not the animation plays. `CATransaction.setCompletionBlock` proved unreliable for this window too, so the order-out is a `DispatchQueue.main.asyncAfter` matched to the fade duration.
+Two details matter beyond "use Core Animation instead of the animator":
+
+- **The model values are set to their end state before the animation is added** — `bandOpacity` and `opacity = 1` on show (`GlowOverlay.swift:47,49`), `opacity = 0` on hide (`:64`). A `CABasicAnimation` animates a presentation value over the model value and is removed on completion, reverting to the model. Leaving the model at the wrong end state means any skipped or dropped animation reverts to invisible. Setting it directly makes the correct end state unconditional on the animation running at all.
+- **The order-out is timed, and guarded against a race.** `DispatchQueue.main.asyncAfter` at `GlowOverlay.swift:93` replaces `CATransaction.setCompletionBlock`, which also proved unreliable here (`GlowOverlay.swift:88-91`). But a timed side effect can outlive the instruction that scheduled it, so `hide()` captures a generation token (`:62`) and the completion re-checks `!self.visible && self.generation == issued` (`:66`) before calling `orderOut`. Without that, a `show()` landing inside a fade-out's duration would be undone by the previous hide's stale timer. The counter is bumped on every show (`:44`).
 
 ## Why This Works
 
-AppKit's animator proxy is driven by the application's own animation machinery. An accessory app that is never the active application does not reliably run it, and there is no error — the animation is simply never performed, leaving the property at whatever it was set to before. Setting `alphaValue = 0` first and relying on the animator to raise it is therefore a design that fails closed into invisibility.
+Per this session's conclusion — AppKit's internal animation scheduling was not itself inspected — `NSAnimationContext` and `window.animator()` are driven by the application's own animation machinery, which is tied to the app participating in the active UI update cycle. An accessory app that is never the active application does not reliably get scheduled into it. No error is raised; the animation is simply never performed and the property keeps whatever it was set to immediately before. `show()` set `alphaValue = 0` and depended on the animator to raise it, so the design failed closed: the code path most likely to be skipped carried the entire visible effect.
 
-A `CABasicAnimation` added to a layer is committed to the render server, which animates it independently of application activation state.
+A `CABasicAnimation` committed through `CATransaction` goes to the render server, which runs independently of the owning app's activation state. That is why moving the animation off the window's animator proxy and onto the view's layer fixes both symptoms at once.
 
 ## Prevention
 
-- **In an app that is never frontmost, do not rely on `window.animator()` or `NSAnimationContext` for anything whose end state matters.** Set the model value directly and use Core Animation for the transition, so a fade that does not play still leaves the correct final state.
-- **Never treat a screen capture as evidence about an overlay window.** This one is confirmed visible on screen and absent from every capture path tried. An empty capture is not a negative result; it is no result. The only check that settles an overlay is looking at the screen, and for a long-running agent that means asking a person.
-- **A verification that cannot fail is not a verification.** The original check for this overlay was "the window exists in `CGWindowListCopyWindowInfo`" plus "it does not appear in a screenshot". Both passed while the band was invisible, because neither observes drawing. Before recording a check as proof, ask what result would have falsified it.
+- **In an app that is never frontmost, do not drive any property whose end state matters through `window.animator()` or `NSAnimationContext`.** Set the value directly for the guaranteed end state and use a `CATransaction`-committed animation purely for the transition. Treat an animator-driven fade in such an app as a latent invisibility bug even when it appeared to work in manual testing, where a debug process can end up frontmost and mask it.
+- **Do not hang anything whose absence leaves a stuck window off `CATransaction.setCompletionBlock`.** Time it against the animation's known duration, and guard it with a generation token if a newer instruction can arrive before the timer fires.
+- **Never treat `screencapture` or `CGWindowListCopyWindowInfo` as evidence about whether an overlay is drawing.** Both were checked here and both were wrong in opposite directions. An empty or stale reading from either is not a negative result; it is not a result.
+- **Before recording a check as verified, name the input that would have made it fail.** The original check was "the window appears in `CGWindowListCopyWindowInfo`" plus "it does not appear in a screenshot". Both passed continuously while the band was invisible, because neither observes drawing. A check that would pass regardless of the bug is not a regression guard.
+- **The real verification already ships in the repo.** `dictation-glow --show-band <seconds>` (`Sources/dictation-glow/main.swift:60`) puts the band against the real window server for a fixed duration and exits. Running it and having a person look at the screen is the check; a capture of the same moment is not.
+
+## How this fix was confirmed
+
+A person ran `--show-band` and reported the band visible. That is the only check that settled it — three capture-based approaches had already failed to distinguish a working overlay from a broken one. For an autonomous agent this means the verification step is "ask someone to look", and that should be planned for rather than discovered after a long investigation.
 
 ## Related Issues
 
-- Built and merged in [#1](https://github.com/raineorshine/dictation-glow/pull/1).
-- [`docs/detection.md`](../../detection.md) carries the standing warning about screenshot verification, next to the detection mechanism it applies to.
+- Fixed and merged in [PR #1](https://github.com/raineorshine/dictation-glow/pull/1).
+- [`docs/detection.md`](../../detection.md) — its "Verifying the overlay" section carries the same warning and command, beside the detection mechanism the band is driven by.
+- `AGENTS.md` restates these findings in its "Verifying the overlay" and "Animation in this app" sections. Update both together.

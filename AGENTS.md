@@ -66,4 +66,6 @@ How the app knows Dictation is listening, the measured latencies, what was ruled
 
 ## Learnings
 
-Past problems and their reasoning are filed under [docs/solutions/](docs/solutions/). Check there before re-investigating something that looks like it has been hit before.
+Past problems and their reasoning are filed under [docs/solutions/](docs/solutions/), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Check there before re-investigating something that looks like it has been hit before.
+
+[CONCEPTS.md](CONCEPTS.md) holds the shared domain vocabulary — the words that mean something specific here, like Band, Edge and the coalescing window. Relevant when orienting to the codebase or naming things in it.
