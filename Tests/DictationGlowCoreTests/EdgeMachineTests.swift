@@ -108,6 +108,29 @@ final class EdgeMachineTests: XCTestCase {
     XCTAssertEqual(machine.state, .idle)
   }
 
+  // Distributed notifications drop silently under load, and a dropped stop would strand the
+  // band on screen -- the one failure worse than not showing it at all.
+  func testAStrandedListeningStateClearsAtTheCeiling() {
+    let (machine, clock, seen) = makeMachine()
+    machine.handle(.startedListening)
+    clock.advance(EdgeMachine.sessionCeiling - 1)
+    XCTAssertEqual(machine.state, .listening, "the ceiling must not cut a live session short")
+    clock.advance(2)
+    XCTAssertEqual(seen(), [.listening, .idle])
+    XCTAssertEqual(machine.state, .idle)
+  }
+
+  // A stop that does arrive cancels the ceiling, so it cannot fire later over an idle band.
+  func testAnOrdinaryStopCancelsTheCeiling() {
+    let (machine, clock, seen) = makeMachine()
+    machine.handle(.startedListening)
+    machine.handle(.didExitDictationMode)
+    clock.advance(EdgeMachine.coalescingWindow + 0.01)
+    XCTAssertEqual(seen(), [.listening, .idle])
+    clock.advance(EdgeMachine.sessionCeiling * 2)
+    XCTAssertEqual(seen(), [.listening, .idle], "the ceiling must not fire after a clean stop")
+  }
+
   // The name set is the detector's whole contract with the system; pin it.
   func testObservedNotificationNamesArePinned() {
     XCTAssertEqual(

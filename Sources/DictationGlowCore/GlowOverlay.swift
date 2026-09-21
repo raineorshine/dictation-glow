@@ -12,6 +12,9 @@ import AppKit
 public final class GlowOverlay {
   private var windows: [NSWindow] = []
   private var visible = false
+  /// Bumped on every show, so a fade-out completion can tell whether it is still the
+  /// latest instruction.
+  private var generation = 0
   private var screenObserver: NSObjectProtocol?
 
   public init() {
@@ -32,6 +35,7 @@ public final class GlowOverlay {
   public func show(duration: TimeInterval = Timing.fadeIn) {
     guard !visible else { return }
     visible = true
+    generation += 1
     rebuild()
     for window in windows {
       window.alphaValue = 0
@@ -44,14 +48,21 @@ public final class GlowOverlay {
   }
 
   /// R5. Fades out, then orders the windows away.
+  ///
+  /// The completion re-checks visibility before ordering out. A show() landing inside the
+  /// fade would otherwise be undone by the previous hide's completion arriving late, which
+  /// leaves the band down while the machine says listening -- observed live on a start
+  /// sequence whose spurious exit fell outside the coalescing window.
   public func hide(duration: TimeInterval = Timing.fadeOut) {
     guard visible else { return }
     visible = false
+    let generation = self.generation
     for window in windows {
       NSAnimationContext.runAnimationGroup { context in
         context.duration = duration
         window.animator().alphaValue = 0
-      } completionHandler: {
+      } completionHandler: { [weak self] in
+        guard let self, !self.visible, self.generation == generation else { return }
         window.orderOut(nil)
       }
     }
@@ -158,4 +169,9 @@ private final class BandView: NSView {
       ring.frame = box.insetBy(dx: inset, dy: inset)
     }
   }
+}
+
+extension GlowOverlay: BandControlling {
+  public func show() { show(duration: Timing.fadeIn) }
+  public func hide() { hide(duration: Timing.fadeOut) }
 }

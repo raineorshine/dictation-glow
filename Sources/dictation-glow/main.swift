@@ -21,6 +21,7 @@ if arguments.first == "--show-band" {
   application.run()
 } else {
   let delegate = AppDelegate()
+  delegate.tracing = arguments.contains("--trace")
   application.delegate = delegate
   application.run()
 }

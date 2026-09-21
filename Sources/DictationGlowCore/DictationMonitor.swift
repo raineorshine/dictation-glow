@@ -10,7 +10,14 @@ import Foundation
 /// No entitlement, no TCC grant, no private framework: `distnoted` delivers these to any
 /// process that asks for them by name. Verified on macOS 26.6.2 from an unsigned, unentitled
 /// binary.
-public final class DictationMonitor {
+///
+/// Registration goes through the `@objc` selector overload rather than the block-based one on
+/// purpose. `addObserver(forName:object:queue:using:)` is inherited from `NotificationCenter`
+/// and has no `suspensionBehavior` parameter, so it silently registers as `.coalesce` — and a
+/// coalesced queue drops all but the last notification while the app is suspended. Losing the
+/// stop edge is the one failure that strands the band on screen, so this registers
+/// `.deliverImmediately`, which is also what flushes any coalesced queue behind it.
+public final class DictationMonitor: NSObject {
   public static let observedNames: [String] = DictationEvent.allCases.map(\.rawValue)
 
   /// Every observed notification, whether or not it changed state. R19 wants a session that
@@ -19,28 +26,42 @@ public final class DictationMonitor {
   public var onEvent: ((DictationEvent, Date) -> Void)?
 
   private let center: DistributedNotificationCenter
-  private var tokens: [NSObjectProtocol] = []
+  private var started = false
 
   public init(center: DistributedNotificationCenter = .default()) {
     self.center = center
+    super.init()
   }
 
   deinit { stop() }
 
   public func start() {
-    guard tokens.isEmpty else { return }
+    guard !started else { return }
+    started = true
     for event in DictationEvent.allCases {
-      let token = center.addObserver(
-        forName: Notification.Name(event.rawValue), object: nil, queue: .main
-      ) { [weak self] _ in
-        self?.onEvent?(event, Date())
-      }
-      tokens.append(token)
+      center.addObserver(
+        self,
+        selector: #selector(receive(_:)),
+        name: Notification.Name(event.rawValue),
+        object: nil,
+        suspensionBehavior: .deliverImmediately)
     }
   }
 
   public func stop() {
-    tokens.forEach(center.removeObserver)
-    tokens.removeAll()
+    guard started else { return }
+    started = false
+    center.removeObserver(self)
+  }
+
+  @objc private func receive(_ notification: Notification) {
+    guard let event = DictationEvent(rawValue: notification.name.rawValue) else { return }
+    // Documented as main-thread delivery for multithreaded apps, and measured as such, but
+    // the overlay must not depend on that promise holding.
+    if Thread.isMainThread {
+      onEvent?(event, Date())
+    } else {
+      DispatchQueue.main.async { [weak self] in self?.onEvent?(event, Date()) }
+    }
   }
 }

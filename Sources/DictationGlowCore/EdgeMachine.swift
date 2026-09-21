@@ -37,11 +37,21 @@ public final class EdgeMachine {
   /// not would move the constant, not the design.
   public static let coalescingWindow: TimeInterval = 0.15
 
+  /// How long a listening state may stand before it is given back unasked.
+  ///
+  /// Distributed notifications are dropped silently when `distnoted`'s queue fills, so a stop
+  /// that never arrives would leave the band up until the app is quit -- which is worse than
+  /// never showing it, because it says Dictation is live when it is not. Generous enough that
+  /// no real session reaches it: Dictation's own silence timeout is around thirty seconds, and
+  /// even continuous speech does not run for half an hour.
+  public static let sessionCeiling: TimeInterval = 30 * 60
+
   public private(set) var state: State = .idle
   public var onChange: ((State) -> Void)?
 
   private let clock: MachineClock
   private var pendingStop: Cancellable?
+  private var ceiling: Cancellable?
 
   public init(clock: MachineClock = RunLoopClock()) {
     self.clock = clock
@@ -72,6 +82,16 @@ public final class EdgeMachine {
   private func transition(to next: State) {
     guard next != state else { return }
     state = next
+    ceiling?.cancel()
+    ceiling = nil
+    if next == .listening {
+      ceiling = clock.schedule(after: Self.sessionCeiling) { [weak self] in
+        guard let self else { return }
+        self.pendingStop?.cancel()
+        self.pendingStop = nil
+        self.transition(to: .idle)
+      }
+    }
     onChange?(next)
   }
 }
