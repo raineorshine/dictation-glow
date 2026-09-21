@@ -161,7 +161,6 @@ stateDiagram-v2
 ### Sources and Research
 
 - `HANDOFF.md` — the originating brief and the candidate-signal list.
-- `kartikk-k/mac-glow` (github.com/kartikk-k/mac-glow) — prior art for the overlay half: a full-screen Metal edge glow across every display, click-through, menu bar, no Accessibility grant. Its continuous ray-cast perimeter coordinate produces seam-free corners, where axshot's ring stack deliberately stops at the display bounds and leaves the corner to the hardware mask. It carries no detection of any kind. Early prototype.
 - axshot, `axshot.swift:5702` (`DriveFrameView`) — the band: a 4pt solid edge plus 16 concentric 1pt rings with quadratic alpha falloff, and the reasoning for one frame per display.
 - axshot, `axshot.swift:5577` (`DriveFrame`) — the window contract behind R2, including `sharingType = .none` and the screen-parameter observer.
 - axshot, `axshot.swift:4777` (`Permissions`) — the preflight/request split, the System Settings deep link, the `tccutil` reset for a stale record, and the settings rows that re-poll so a grant made elsewhere appears without a relaunch.
