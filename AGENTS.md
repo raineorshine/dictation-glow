@@ -56,6 +56,10 @@ Distributed notifications are also dropped silently under burst, so nothing may 
 pkill -f dictation-glow
 ```
 
+**Posting the notifications yourself drives a running instance without speaking to it.** `DistributedNotificationCenter.default().postNotificationName(_:object:userInfo:deliverImmediately:)` with `DictationIMNotificationStartedListening` puts the band up and `DictationIMNotificationDidExitDictationMode` takes it down, which is how the overlay is exercised in an app that is otherwise waiting on a microphone.
+
+**Leave a second between a synthesized stop and the next start.** The stop is held for `EdgeMachine.coalescingWindow` before it is acted on, so one posted at the tail of a test lands inside the session the next test just started and takes the band down under it — which reads as the band failing to stay up, and is only the previous test arriving late.
+
 ## Install location
 
 The app must run from `/Applications`. Only the installed copy may read or write the login-item record: reading `SMAppService.mainApp.status` repoints the record at whichever bundle performed the read, and the build script deletes the build-tree copy on the next build.
