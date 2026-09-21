@@ -15,13 +15,15 @@ swift test        # unit tests (pure logic only)
 
 **A screen capture is not evidence about the band.** It is confirmed visible on screen and absent from every capture path tried, including with the capture opt-out removed and the window level lowered. An empty screenshot is not a negative result, it is no result.
 
-The only check that settles the overlay is looking at it:
+The only check that settles what the band *draws* is looking at it:
 
 ```
 /Applications/DictationGlow.app/Contents/MacOS/dictation-glow --show-band 6
 ```
 
 For an agent, that means asking a person. Do not spend time chasing an empty capture — see [docs/solutions/ui-bugs/appkit-overlay-invisible-in-accessory-app.md](docs/solutions/ui-bugs/appkit-overlay-invisible-in-accessory-app.md), which is what that costs.
+
+**What the window *is*, as against what it draws, does not need a person.** A throwaway binary that links `.build/release/DictationGlowCore.o` reaches the live overlay through `NSApp.windows` — the band's are the windows at `screenSaver + 1` — so a window-server property can be driven and read against the shipped `GlowOverlay` instead of against a copy of it pasted into a harness. That is the difference between proving the fix and proving a reimplementation of it.
 
 **`CGWindowListCopyWindowInfo` cannot tell shown from hidden here either.** It keeps listing the window after `orderOut` has run and AppKit reports `isVisible == false`.
 
@@ -50,11 +52,13 @@ Distributed notifications are also dropped silently under burst, so nothing may 
 
 ## Testing against the live system
 
-**Kill every running instance first.** The app runs at login and `open` leaves instances behind; every one of them receives the same distributed notifications, so a stray process will answer your test and make the results incoherent.
+**Kill every running instance first — after you have taken what the old one knows.** The app runs at login and `open` leaves instances behind; every one of them receives the same distributed notifications, so a stray process will answer your test and make the results incoherent.
 
 ```
 pkill -f dictation-glow
 ```
+
+But it also runs for days, and a fault that needs a long-lived process lives nowhere else. A copy launched to reproduce it is a different subject and can be healthy while the one the user is complaining about is not — which reads as the bug not existing, and is the strongest evidence there is that the fault is in accumulated state rather than in the code. Measure the running process before killing it, and compare it against a fresh one rather than replacing it with one.
 
 ## Install location
 
