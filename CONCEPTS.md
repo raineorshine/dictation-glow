@@ -35,9 +35,19 @@ A stop with no preceding start does not count, because it proves nothing about d
 ## Overlay
 
 ### Band
-The blue border drawn around the outer edge of every display for exactly as long as Dictation is listening.
+The blue glow drawn around the outer edge of every display for exactly as long as Dictation is listening.
 
-One band per display rather than one around the region they collectively cover, so displays of different sizes do not leave a band running through space no screen occupies. Its colour is fixed rather than following the system appearance, because it is drawn over other applications' windows and states its own colour rather than borrowing one. It has no intermediate strengths: it is at full strength or absent.
+One band per display rather than one around the region they collectively cover, so displays of different sizes do not leave a band running through space no screen occupies. Its colour is fixed rather than following the system appearance, because it is drawn over other applications' windows and states its own colour rather than borrowing one. It has no intermediate strengths: it is at full strength or absent — the Profile shapes how that strength is spread across the glow's depth, not how much of it there is.
+
+### Profile
+The shape of the Band across its depth: the width and alpha of the rim on the display's own edge, how far the glow reaches inward, the alpha it leaves the rim at, and the exponent the fall is shaped by.
+
+Named profiles rather than tuned constants, because which one is right is a matter of taste against a real desktop and that is a judgement to be re-made rather than argued from the numbers. Four ship and `--compare-bands` walks them; the rim is the one in use. A band four points wide at full strength reads as a line drawn around the screen, where a point of rim under a wide falloff reads as the edge itself being lit.
+
+### Display corner
+The radius the system rounds a display's corners to, which the Band is drawn to at each corner.
+
+No public API reports it and no screen capture can measure it, because a rounded display photographs square: the mask is applied after the framebuffer. It is read from the window server through a private call, in points of the display's current mode, so it changes with the scaled resolution. A display that reports no corner keeps a square band. A square band on a rounded display is cut by the panel at each corner, which breaks it exactly where the eye follows it around.
 
 ### Fail closed
 The project's standing rule that the Band is shown only on positive confirmation, and that any ambiguity resolves to showing nothing.

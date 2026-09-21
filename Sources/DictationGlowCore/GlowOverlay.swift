@@ -10,6 +10,17 @@ import AppKit
 /// window rather than a control, it answers no key, and a borderless window sitting over
 /// every app is the last thing a reader should have to step through to get past.
 public final class GlowOverlay {
+  /// The shape of the glow. Changing it rebuilds the layers on the spot, so a run that walks
+  /// the variants can hand the next one to a band that is already up.
+  public var profile: BandGeometry.Profile {
+    didSet {
+      guard profile != oldValue else { return }
+      for window in windows {
+        (window.contentView as? BandView)?.apply(profile: profile)
+      }
+      rebuild()
+    }
+  }
   private var windows: [NSWindow] = []
   private var visible = false
   /// Bumped on every show, so a fade-out completion can tell whether it is still the
@@ -17,7 +28,8 @@ public final class GlowOverlay {
   private var generation = 0
   private var screenObserver: NSObjectProtocol?
 
-  public init() {
+  public init(profile: BandGeometry.Profile = BandGeometry.defaultProfile) {
+    self.profile = profile
     // A screen coming or going, or changing resolution, is the only event that moves the
     // edge of a desktop. Nothing else has to be heard about.
     screenObserver = NotificationCenter.default.addObserver(
@@ -108,21 +120,35 @@ public final class GlowOverlay {
   }
 
   private func rebuild() {
-    let bands = BandGeometry.bands(for: NSScreen.screens.map(\.frame))
+    let bands = BandGeometry.bands(for: NSScreen.screens.map(Self.display(for:)))
+
     while windows.count > bands.count {
       windows.removeLast().orderOut(nil)
     }
     while windows.count < bands.count {
-      windows.append(Self.makeWindow())
+      windows.append(Self.makeWindow(profile: profile))
     }
     for (window, band) in zip(windows, bands) {
       window.setFrame(band.frame, display: false)
-      (window.contentView as? BandView)?.layoutBand()
+      (window.contentView as? BandView)?.layoutBand(cornerRadius: band.cornerRadius)
       if visible { window.orderFrontRegardless() }
     }
   }
 
-  private static func makeWindow() -> NSWindow {
+  /// The corner is read on every rebuild rather than cached: the window server reports it in
+  /// points of the display's current mode, so a change of scaled resolution changes it --
+  /// and that arrives as the same screen-parameters notification that moves the edge.
+  public static func display(for screen: NSScreen) -> BandGeometry.Display {
+    let key = NSDeviceDescriptionKey("NSScreenNumber")
+    guard let number = screen.deviceDescription[key] as? NSNumber else {
+      return BandGeometry.Display(frame: screen.frame)
+    }
+    let radii = DisplayCorners.reportedRadii(for: CGDirectDisplayID(number.uint32Value))
+    return BandGeometry.Display(
+      frame: screen.frame, cornerRadius: BandGeometry.cornerRadius(forReportedRadii: radii))
+  }
+
+  private static func makeWindow(profile: BandGeometry.Profile) -> NSWindow {
     let window = NSWindow(
       contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
     window.isOpaque = false
@@ -142,19 +168,24 @@ public final class GlowOverlay {
     // captured by ScreenCaptureKit, and Apple states there is no public API that prevents
     // capture -- so expect the band in screen recordings and shares.
     window.sharingType = .none
-    window.contentView = BandView()
+    window.contentView = BandView(profile: profile)
     return window
   }
 }
 
-/// The band itself, drawn as concentric layers so every ring is the same rectangle again
+/// The band itself, drawn as concentric layers so every ring is the display's corner again
 /// rather than an approximation of it.
 private final class BandView: NSView {
-  private var edge: CALayer?
+  private var rim: CALayer?
   private var rings: [CALayer] = []
+  private var profile: BandGeometry.Profile
+  /// The display's own corner, handed down on every rebuild. Held so that a layout arriving
+  /// from AppKit rather than from a rebuild draws the same corner rather than a square one.
+  private var cornerRadius: CGFloat = 0
 
-  override init(frame frameRect: NSRect) {
-    super.init(frame: frameRect)
+  init(profile: BandGeometry.Profile) {
+    self.profile = profile
+    super.init(frame: .zero)
     // The backing layer has to exist before sublayers are added. `wantsLayer` alone does not
     // guarantee one for a view that is not yet in a window, and addSublayer on a nil layer
     // is a silent no-op -- the band then never draws, with a perfectly visible window.
@@ -170,21 +201,45 @@ private final class BandView: NSView {
   override func isAccessibilityElement() -> Bool { false }
   override func layout() {
     super.layout()
-    layoutBand()
+    layoutBand(cornerRadius: cornerRadius)
+  }
+
+  /// A different profile is a different number of rings, so the layers are built again
+  /// rather than reassigned. The caller lays the band out afterwards.
+  func apply(profile: BandGeometry.Profile) {
+    self.profile = profile
+    guard let root = layer else { return }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    defer { CATransaction.commit() }
+    root.sublayers?.forEach { $0.removeFromSuperlayer() }
+    rim = nil
+    rings = []
+    build(on: root)
+    layoutBand(cornerRadius: cornerRadius)
   }
 
   private func build(on root: CALayer) {
     let c = BandGeometry.bandColorComponents
-    let solid = CGColor(red: c.red, green: c.green, blue: c.blue, alpha: 1)
-    let edgeLayer = CALayer()
-    edgeLayer.borderColor = solid
-    edgeLayer.borderWidth = BandGeometry.edgeWidth
-    root.addSublayer(edgeLayer)
-    edge = edgeLayer
-    for alpha in BandGeometry.ringAlphas {
+    func color(_ alpha: CGFloat) -> CGColor {
+      CGColor(red: c.red, green: c.green, blue: c.blue, alpha: alpha)
+    }
+    if profile.rimWidth > 0 {
+      let rimLayer = CALayer()
+      rimLayer.borderColor = color(profile.rimAlpha)
+      rimLayer.borderWidth = profile.rimWidth
+      // macOS rounds with a continuous corner -- a squircle, fuller through the diagonal than
+      // a circle of the same radius -- and no `NSBezierPath` draws that curve. A layer is the
+      // only thing that offers it, which is the reason the band is layers rather than a path.
+      rimLayer.cornerCurve = .continuous
+      root.addSublayer(rimLayer)
+      rim = rimLayer
+    }
+    for alpha in profile.ringAlphas {
       let ring = CALayer()
-      ring.borderColor = CGColor(red: c.red, green: c.green, blue: c.blue, alpha: alpha)
-      ring.borderWidth = BandGeometry.ringWidth
+      ring.borderColor = color(alpha)
+      ring.borderWidth = BandGeometry.Profile.ringWidth
+      ring.cornerCurve = .continuous
       root.addSublayer(ring)
       rings.append(ring)
     }
@@ -192,14 +247,17 @@ private final class BandView: NSView {
 
   /// A layer moved without this animates itself into position, and a band that slides after
   /// the screen it is marking is a band that is wrong for as long as the slide lasts.
-  func layoutBand() {
+  func layoutBand(cornerRadius radius: CGFloat) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
+    cornerRadius = radius
     let box = CGRect(origin: .zero, size: bounds.size)
-    edge?.frame = box
-    for (ring, inset) in zip(rings, BandGeometry.ringInsets) {
+    rim?.frame = box
+    rim?.cornerRadius = radius
+    for (ring, inset) in zip(rings, profile.ringInsets) {
       ring.frame = box.insetBy(dx: inset, dy: inset)
+      ring.cornerRadius = BandGeometry.ringRadius(outer: radius, inset: inset)
     }
   }
 }

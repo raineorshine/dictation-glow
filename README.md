@@ -28,7 +28,11 @@ That choice has a cost worth stating outright: a broken detector and an idle Dic
 
 ## Overlay
 
-The perimeter band is taken from [axshot](https://github.com/raineorshine/axshot)'s drive frame: a solid band on each screen's own edge, with the inward falloff drawn as concentric rings rather than as a blur. One frame per screen rather than one around the bounding box, so two displays of different heights do not leave a band running through dead space.
+The perimeter glow is taken from [axshot](https://github.com/raineorshine/axshot)'s drive frame: a one-point lit edge on each screen's own boundary, then forty-eight points of falloff inward, drawn as concentric rings rather than as a blur. One ring per point, each at an exact alpha, so the profile across the glow is stated rather than being whatever a blur radius produces. One frame per screen rather than one around the bounding box, so two displays of different heights do not leave a band running through dead space.
+
+The shape is a named profile — rim width and alpha, depth, peak, and the exponent the fall is shaped by — and four of them ship. `--compare-bands` walks them all on the same desktop, one at a time; `--show-band <seconds> <name>` draws one.
+
+Each band is rounded to its own display's corner, read from the window server, and drawn as a continuous curve — the squircle macOS rounds with, which no `NSBezierPath` draws and a layer does. A display that reports no corner, which is every external monitor, keeps a square band. There is no public API for this: see [docs/solutions/ui-bugs/display-corner-radius-has-no-public-api.md](docs/solutions/ui-bugs/display-corner-radius-has-no-public-api.md) for the call, its signature, and why a screenshot cannot measure the curve.
 
 The window is non-activating, ignores mouse events, joins all Spaces, is stationary, and sits above full screen windows. It opts out of screen capture, which keeps it out of ordinary screenshots but not out of screen recordings: since macOS 15.4 that opt-out no longer applies to ScreenCaptureKit, and Apple says no public API prevents capture.
 

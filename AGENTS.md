@@ -25,6 +25,8 @@ For an agent, that means asking a person. Do not spend time chasing an empty cap
 
 **`CGWindowListCopyWindowInfo` cannot tell shown from hidden here either.** It keeps listing the window after `orderOut` has run and AppKit reports `isVisible == false`.
 
+**A capture cannot measure the display's corner either.** A rounded display photographs square: the mask is applied after the framebuffer. `--show-band` prints the radius it resolved per screen before it draws, which is as close to a machine-checkable answer as the band's shape gets. The radius comes from a private SkyLight call with a hand-derived signature that crashes if called wrong — read [docs/solutions/ui-bugs/display-corner-radius-has-no-public-api.md](docs/solutions/ui-bugs/display-corner-radius-has-no-public-api.md) before touching `DisplayCorners`.
+
 ## Animation in this app
 
 The app is an `LSUIElement` accessory that is never the active application, so **`window.animator()` and `NSAnimationContext` do not reliably run**. There is no error; the animation is simply never performed and the property keeps its previous value. Use Core Animation on the layer, set the model value directly so the end state is correct whether or not the animation plays, and do not hang required work off a completion block. Full account: the solution doc linked above.
