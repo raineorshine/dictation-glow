@@ -13,9 +13,9 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** A person dictating on this Mac knows at a glance, without looking away from what they are doing, whether native Dictation is currently listening — and notices the moment it stops on its own.
-- **Means:** The overlay is fixed: axshot's perimeter band, in Dictation blue, one frame per display. The detection mechanism is not fixed and is chosen from what the diagnostic harness records.
+- **Means:** The overlay is fixed: axshot's perimeter band, in Dictation blue, one frame per display. The detection mechanism is now fixed too — the distributed-notification pair `DictationIMNotificationStartedListening` and `DictationIMNotificationDidExitDictationMode`, verified across live sessions on 2026-09-20.
 - **Product authority:** The decisions below, settled in the brainstorm dialogue. `HANDOFF.md` is the originating brief.
-- **Open blockers:** None for planning. The confirming signal is deliberately unidentified — the harness (R19–R21) is what identifies it, and the production detector cannot be specified until it has run.
+- **Open blockers:** None. The confirming signal was identified by direct observation rather than by the planned harness, so R19–R21 are now verification of the shipped detector rather than a phase that precedes it.
 
 ---
 
@@ -45,7 +45,7 @@ The failure is specifically the stop edge. The start is announced by the person'
 - **The band never appears before Dictation is confirmed; there is no optimistic path.** (session-settled: user-directed — chosen over raising the band on a recognized Dictation shortcut and withdrawing it if confirmation did not follow, and over leaving the choice to the harness: a shortcut that does not actually start Dictation would produce a blue flash, which is the false positive fail-closed exists to prevent.) This also removes keyboard monitoring from scope, and with it an Accessibility dependency the app may otherwise not need. Governs R6.
 - **The app launches at login by default.** (session-settled: user-directed — chosen over shipping the login item opt-in and over manual start only: an app that is not running produces no band, which is indistinguishable from idle Dictation and from a broken detector, and unlike those two the guided live test cannot diagnose it.) Governs R18.
 - **When reliability and latency conflict, reliability wins.** (session-settled: user-directed — chosen over treating the 300ms stop budget as a hard gate that disqualifies slower signals, and over deferring the tradeoff to the harness report: a band that is always correct but slightly late still beats today, where one that is fast but sometimes wrong reintroduces the doubt this exists to remove.) Governs R6, R11.
-- **The diagnostic harness runs before the production detector is designed.** The candidate signals named in `HANDOFF.md` are candidates, not verified behavior; committing to one before observing a real session would be guessing. Governs R19, R20, R21.
+- **The detector is built directly, without a preceding harness phase.** (session-settled: user-directed — supersedes "the diagnostic harness runs before the production detector is designed", which was written while the confirming signal was unknown.) Observing two real sessions answered the question the harness existed to answer, so the remaining unknowns — the start paths in R9 and the concurrent-microphone case — are verified against the real app instead. Governs R19, R20, R21.
 
 ### Requirements
 
@@ -59,12 +59,13 @@ The failure is specifically the stop edge. The start is announced by the person'
 
 **Detection**
 
-- R6. The overlay is shown only while native macOS Dictation is positively confirmed to be listening; a live microphone that cannot be attributed to Dictation never raises it.
+- R6. The overlay is shown only while native macOS Dictation is positively confirmed to be listening; a live microphone that cannot be attributed to Dictation never raises it. Confirmation is the `DictationIMNotificationStartedListening` distributed notification, which is Dictation-specific by name and therefore needs no microphone attribution at all.
 - R7. The stop is detected whatever its cause — the user ending Dictation, the silence timeout, or the dictating application losing focus.
-- R8. Stop detection does not depend on the microphone stream closing.
+- R8. Stop detection does not depend on the microphone stream closing. `DictationIMNotificationDidExitDictationMode` carries the stop edge independently, and leads the audio: measured 93ms and 78ms ahead of the capture closing across two sessions.
 - R9. Detection is independent of how Dictation was started, covering the Globe double-tap, the Fn key, a custom shortcut, and the Edit menu.
 - R10. Voice Control, Siri, and third-party dictation tools do not raise the overlay.
 - R11. Where two candidate signals differ, the one with fewer false results is chosen over the faster one; the stop budget in Success Criteria is a target, not a disqualifier.
+- R11a. A `DictationIMNotificationDidExitDictationMode` followed within 150ms by `WillStartListening` or `StartedListening` is part of a start sequence, not a stop, and does not lower the band. Both observed sessions emitted one.
 
 **Health and self-report**
 
@@ -82,11 +83,11 @@ The failure is specifically the stop edge. The start is announced by the person'
 
 - R18. The app registers itself as a login item on first run so that a restart re-arms it without intervention, and the registration can be turned off.
 
-**Diagnostic harness**
+**Detection verification**
 
-- R19. Before the production detector is built, a harness logs every candidate signal across real Dictation sessions, timestamped against observed ground truth.
-- R20. The harness is exercised against a session where another application holds the microphone concurrently, and against each start path named in R9.
-- R21. The harness output names which signals carry both the start and the stop edge, and states the failure modes of each.
+- R19. The app logs every observed notification with a timestamp, so a session that failed to raise the band can be diagnosed after the fact rather than reproduced.
+- R20. Detection is verified against a session where another application holds the microphone concurrently, and against each start path named in R9. These are the two cases the single observed signal has not yet been exercised on.
+- R21. The detector's dependence on an undocumented notification name is recorded where a future reader will find it, together with the macOS version it was verified on and what the self-test will look like when the name changes.
 
 ### Key Flows
 
@@ -118,7 +119,7 @@ stateDiagram-v2
   - **Covers R6, R10.** Given Dictation is not running, When a call, a recording, or a third-party dictation tool opens the microphone, Then no band appears.
 - AE4. A detector that has stopped working
   - **Covers R12.** Given the confirming signal no longer resolves, When the person runs the self-test and starts Dictation as it prompts, Then the test reports that the start was never observed and names the missing permission or signal, rather than reporting success because its preconditions still hold.
-- AE5. Rebuild during harness work
+- AE5. Rebuild during development
   - **Covers R15, R16.** Given Accessibility has been granted, When the app is rebuilt and relaunched, Then the grant still holds and nothing has to be re-authorized.
 - AE6. Displays of different heights
   - **Covers R1.** Given two displays of different heights, When the band is shown, Then each display carries its own complete band and no band segment runs through the dead space beside the shorter one.
@@ -127,7 +128,7 @@ stateDiagram-v2
 
 - The stop is visible within roughly 300ms of Dictation ceasing to listen — about half a spoken word, so the person stops mid-word rather than mid-sentence. This is a target; per R11 a more reliable but slower signal is preferred to a faster one that is sometimes wrong.
 - Over a week of ordinary use, the band never appears while Dictation is not running.
-- No rebuild during harness work requires re-granting Accessibility.
+- No rebuild during development requires re-granting Accessibility.
 - The self-test distinguishes a healthy detector with Dictation idle from a detector that has stopped working.
 
 ### Scope Boundaries
@@ -143,20 +144,24 @@ stateDiagram-v2
 
 ### Dependencies and Assumptions
 
-- macOS 26.6.2 is the development target. Signals verified there may not hold on earlier or later versions, which is part of what R21's failure modes must record.
+- macOS 26.6.2 is the development target. The confirming notification is undocumented, so it may be renamed or withdrawn in any later release; R21 records that exposure and R12's self-test is what surfaces it.
 - axshot is available as a sibling checkout to copy the band and the signing scripts from. It is a source, not a runtime dependency.
 - The `Axshot Local Signing` identity is shared between the two applications. One keychain approval covers both, and TCC records stay independent because they key on bundle identifier.
 - An application under a temporary directory cannot be granted Accessibility — LaunchServices registers no bundle there and `tccutil` cannot resolve the identifier — which is what R17 exists for. Requesting the grant from such a location also marks the client as prompted, so later requests return false with no dialog until the record is reset.
 - The 300ms stop budget is derived from the purpose rather than measured, and is deliberately not a gate (R11).
-- No public API attributes a live microphone to a specific process. The one existing attempt found in the field, MicState, rescans running processes once a second against a hardcoded list of known meeting applications. The harness should not expect to find a clean attribution signal, and R6 may have to rest on a Dictation-specific signal rather than on microphone ownership.
+- Microphone attribution turned out not to be needed, and the earlier note here was wrong on the facts. A public API does attribute a live microphone to a process: `kAudioHardwarePropertyProcessObjectList` with `kAudioProcessPropertyIsRunningInput`, `kAudioProcessPropertyPID` and `kAudioProcessPropertyBundleID`, available since macOS 14.2 and needing no TCC grant. MicState uses exactly that; its bundle-ID lists are user-editable policy filters applied after attribution, not the detection mechanism. R6 rests on the Dictation-specific notification instead, and the CoreAudio attribution is retained only as the cross-check inside R12's self-test.
 
 ### Outstanding Questions
 
 **Deferred to Planning**
 
-- Which signal confirms Dictation. The harness answers this; the production detector cannot be specified before it has run.
-- Whether Screen Recording is required. It is needed only if the confirming signal reads window titles from the window server; window owner, layer, and bounds are readable without it.
 - Fade durations.
+
+**Answered**
+
+- Which signal confirms Dictation — the `DictationIMNotificationStartedListening` / `DictationIMNotificationDidExitDictationMode` distributed-notification pair. Answered by direct observation, 2026-09-20.
+- Whether Screen Recording is required — no. The confirming signal reads no window, so neither Screen Recording nor Accessibility is needed for detection.
+- Whether any permission is required for detection — none. The notifications are delivered by `distnoted` to any process that observes them by name.
 
 ### Sources and Research
 
@@ -166,4 +171,13 @@ stateDiagram-v2
 - axshot, `axshot.swift:4777` (`Permissions`) — the preflight/request split, the System Settings deep link, the `tccutil` reset for a stale record, and the settings rows that re-poll so a grant made elsewhere appears without a relaunch.
 - axshot, `axshot.swift:719` (`respawnDisclaimed`) — the basis for R16.
 - axshot, `create-signing-cert.sh` and `build.sh` — the basis for R15, including the keychain-dialog timeout and the ad-hoc fallback warning.
-- Verified on this machine, 2026-09-20, macOS 26.6.2: `DictationIM.app` and `corespeechd` run persistently, so process presence alone is not a signal. With Dictation idle, no Dictation-owned window is on screen and the default input device reports `kAudioDevicePropertyDeviceIsRunningSomewhere = 0`. That property is public, takes a listener rather than a poll, and needs no TCC grant — but it cannot be the authority on the stop edge, which is what R8 records.
+- Verified on this machine, 2026-09-20, macOS 26.6.2, across two live Dictation sessions observed by an unsigned, unentitled command-line binary:
+  - `DictationIM` posts `DictationIMNotificationWillStartListening`, `DictationIMNotificationStartedListening`, `DictationIMNotificationDidEnterDictationMode` and `DictationIMNotificationDidExitDictationMode` to `CFNotificationCenterGetDistributedCenter()`. No entitlement, no TCC grant, no private framework, no log scraping.
+  - `DictationIMNotificationStoppedListening` exists as a string in the binary but never fires. The stop edge is `DidExitDictationMode`.
+  - The notification leads the audio on both edges: start by 127ms and 91ms, stop by 93ms and 78ms.
+  - `kAudioDevicePropertyDeviceIsRunningSomewhere` on the default input read `0` for the whole of both sessions, not merely at the stop. Native Dictation captures through a `corespeechd` audio tap and never opens the device, so that property cannot carry either edge here. This corrects the earlier note, which framed it as usable for the start.
+  - `corespeechd` holds `kAudioProcessPropertyIsRunningInput` in roughly 4-second bursts every 30–90 seconds when Dictation is idle, running `CSSelfTriggerDetector` voice-trigger scoring. Any rule keyed on CoreSpeech owning input false-positives continuously.
+  - `DictationIM` launched fresh 1.4s before the first session rather than running persistently, so process presence is unreliable in both directions.
+- Control Center's own attribution is `SystemStatus.framework` — `STDataAccessStatusDomain` publishing `STDataAccessAttribution` with `microphoneRecordingAttribution`, an `STAttributedEntity` naming the bundle, and start/end timestamps. It is gated behind the Apple-internal entitlements `com.apple.systemstatus.activityattribution` and `com.apple.systemstatus.domains`, which a third party cannot hold. Closed door, not a fragility tradeoff; recorded so it is not revisited.
+- `evbuildsnet/micstate` — the only field attempt at real attribution, via the public CoreAudio process-object properties. `Sources/MicState/MicPresence.swift:26-73`.
+- `naveen/miccheck`, `TuanBT/MacMute`, `oochernyshev/lockmic` — read for detection technique. MicCheck and MacMute watch `kAudioDevicePropertyDeviceIsRunningSomewhere` with no attribution; LockMic detects microphone activity not at all. MacMute watches every input device rather than only the default, and its `TeamsAccessibility.swift:178-187` shows how to force a full AX tree out of a Chromium app should that ever be needed.
