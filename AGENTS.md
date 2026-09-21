@@ -66,6 +66,13 @@ Never re-register a login item the user turned off. Registration happens once, o
 
 How the app knows Dictation is listening, the measured latencies, what was ruled out, and what breaks it: [docs/detection.md](docs/detection.md). Read it before changing anything in `DictationMonitor` or `EdgeMachine` — the notification names are undocumented and the state machine exists for a reason that is not obvious from the code.
 
+## Shipping
+
+[`ship`](.claude/skills/ship/SKILL.md) lands a change on `origin/main`: gates, the writing the change
+owes, rebase, squash, push, then install and *relaunch* — the accessory launched at login keeps the
+old binary until it is restarted. Squash to one commit and push; no PR, no merge commits. It runs
+only when the user asks for it.
+
 ## Learnings
 
 Past problems and their reasoning are filed under [docs/solutions/](docs/solutions/), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Check there before re-investigating something that looks like it has been hit before.
