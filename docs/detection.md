@@ -73,6 +73,20 @@ So the only way to check the overlay is to look at it:
 
 A capture coming back without the band proves nothing. Do not treat an empty screenshot as evidence the overlay is broken.
 
+## Driving a session without dictating
+
+The app is waiting on notifications, not on a microphone, so anything that can post them can put the band up. That is how the overlay gets exercised against a copy already running, including the one launched at login:
+
+```swift
+DistributedNotificationCenter.default().postNotificationName(
+  Notification.Name("DictationIMNotificationStartedListening"),
+  object: nil, userInfo: nil, deliverImmediately: true)
+```
+
+`DictationIMNotificationDidExitDictationMode` takes it down again. Every running instance answers, so kill the strays first or the results are incoherent.
+
+**Leave a second between a synthesized stop and the next start.** The stop is held for `EdgeMachine.coalescingWindow` before it is acted on, so one posted at the tail of a test lands inside the session the next test just started and takes the band down under it. That reads as the band failing to stay up, and is only the previous test arriving late.
+
 ## Coverage
 
 Confirmed against real dictation sessions: every start path — Globe double-tap, the Fn key, a custom shortcut, the Edit menu — and a session where another application held the microphone throughout. Detection behaves the same in all of them, which is what the architecture predicts: nothing in the detection path reads audio, and every start path goes through the same `DictationIM`.
