@@ -61,6 +61,18 @@ Distributed notifications are dropped silently when `distnoted`'s queue fills â€
 - Observers register with `.deliverImmediately`. The block-based Swift API has no suspension-behavior parameter and silently registers as `.coalesce`, which drops all but the last notification while the app is suspended.
 - A listening state that stands for thirty minutes is given back unasked. A dropped stop would otherwise leave the band up until the app is quit, which is worse than never showing it, because it claims Dictation is live when it is not.
 
+## Verifying the overlay
+
+The band cannot be checked with a screenshot. It is confirmed visible on screen, but it does not appear in a `screencapture`, and that held with the capture opt-out removed and with the window level lowered to `.floating`. Whatever excludes it is not `sharingType` and not the window level.
+
+So the only way to check the overlay is to look at it:
+
+```bash
+/Applications/DictationGlow.app/Contents/MacOS/dictation-glow --show-band 6
+```
+
+A capture coming back without the band proves nothing. Do not treat an empty screenshot as evidence the overlay is broken.
+
 ## Still unverified
 
 Two cases from the plan have not been exercised against a real session:
