@@ -12,11 +12,9 @@ The overlay exists so the transition is visible without looking. Blue border mea
 
 ## Status
 
-Pre-implementation. The overlay design is settled; the detection architecture is not.
+Working. The overlay, the detector, the menu bar, the login item, the event log, and the self-test are all built and verified.
 
-The central unresolved question is how a third-party process determines, with low latency and high confidence, that native Dictation is currently active. The candidate signals — Accessibility observation of the Dictation UI, microphone stream state, dictation-related system processes, distributed notifications, window server inspection — are candidates, not verified signals. The first thing built is a diagnostic harness that logs all of them before, during, and after real Dictation sessions. The production architecture is chosen from what that harness records.
-
-See [HANDOFF.md](HANDOFF.md) for the full brief.
+Two cases have not been exercised against a real dictation session: each of the start paths, and a session where another application holds the microphone throughout. See [docs/detection.md](docs/detection.md).
 
 ## Design decisions
 
@@ -26,20 +24,28 @@ See [HANDOFF.md](HANDOFF.md) for the full brief.
 
 That choice has a cost worth stating outright: a broken detector and an idle Dictation look the same. So the app carries a self-test and a record of the last successfully attributed session. The absence of a border has to be falsifiable, or the failure mode becomes the one this utility was built to fix.
 
-**Simultaneous microphone use rules out the cheap architecture.** `kAudioDevicePropertyDeviceIsRunningSomewhere` is public, listenable, and needs no permission, but it cannot be the authority on the off edge: if another application holds the microphone while Dictation times out, the property never flips. The confirming signal has to carry both edges on its own.
+**Detection reads no audio at all.** `DictationIM` posts its own notifications, so the app never has to work out who holds the microphone. That makes the concurrent-microphone case a non-issue by construction rather than something to engineer around, and it is why the app needs no permissions. See [docs/detection.md](docs/detection.md) for what was ruled out along the way.
 
 ## Overlay
 
 The perimeter band is taken from [axshot](https://github.com/raineorshine/axshot)'s drive frame: a solid band on each screen's own edge, with the inward falloff drawn as concentric rings rather than as a blur. One frame per screen rather than one around the bounding box, so two displays of different heights do not leave a band running through dead space.
 
-The window is non-activating, ignores mouse events, joins all Spaces, is stationary, sits above full screen windows, and excludes itself from screen capture so it does not appear in anyone's screenshots.
+The window is non-activating, ignores mouse events, joins all Spaces, is stationary, and sits above full screen windows. It opts out of screen capture, which keeps it out of ordinary screenshots but not out of screen recordings: since macOS 15.4 that opt-out no longer applies to ScreenCaptureKit, and Apple says no public API prevents capture.
 
 ## Permissions
 
-Code signing and permission provisioning follow axshot. An ad-hoc signature's code hash changes on every build and TCC pins grants to that hash, so each rebuild reads as a stranger and Accessibility has to be granted again. A stable self-signed certificate gives a fixed Designated Requirement and the grants survive. This matters more here than usual, since the harness phase means rebuilding constantly.
+None. Not Accessibility, not Screen Recording, not Microphone.
 
-The app also re-spawns itself with responsibility disclaimed, so TCC attributes the grant to the app rather than to whatever launched it.
+The notifications are delivered by `distnoted` to any process that asks for them by name, the overlay needs no grant, and registering as a login item needs no grant. The app asks for nothing.
+
+It is still signed with a stable self-signed certificate rather than ad-hoc, because the login-item record is tied to the signed identity: an ad-hoc signature changes on every build, and the registration would have to be approved again each time. Run `./create-signing-cert.sh` once; `build.sh` calls it for you.
 
 ## Requirements
 
-macOS 26 or later. Built and tested on 26.6.2.
+macOS 14 or later to build; developed and verified on macOS 26.6.2 with Swift 6.4.
+
+```
+./build.sh
+```
+
+Builds, signs, and installs to `/Applications`. Run `swift test` for the unit tests.

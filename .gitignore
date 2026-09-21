@@ -6,3 +6,5 @@ build/
 *.o
 *.dSYM/
 .compound-engineering/config.local.yaml
+.build/
+DictationGlow.app/
