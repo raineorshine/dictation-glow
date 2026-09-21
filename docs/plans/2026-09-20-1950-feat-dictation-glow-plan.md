@@ -18,7 +18,7 @@ execution: code
 - **Execution profile:** Swift, SwiftPM, no Xcode project. Built and signed by `build.sh` into `/Applications`. Verified by `swift test` for pure logic and by live gates against real Dictation for everything else.
 - **Who finishes it:** the implementing agent carries U1 through U8 and opens a pull request; merging stays with the user.
 - **Stop conditions:** stop if SwiftPM cannot produce a bundle-compatible binary (KTD1 is withdrawn and U1 falls back to `swiftc`), or if the notification names do not fire on the implementing machine — that invalidates R6 and the plan rather than the unit.
-- **Open blockers:** None that stop implementation. One product-scope conflict — whether R14, R16 and AE5 survive now that the app needs no TCC grant at all — is recorded in Outstanding Questions and rides to the pull request; U1 and U5 are written to work either way. The confirming signal was identified by direct observation rather than by the planned harness, so R19–R21 are now verification of the shipped detector rather than a phase that precedes it.
+- **Open blockers:** None. The confirming signal was identified by direct observation rather than by the planned harness, so R19–R21 are now verification of the shipped detector rather than a phase that precedes it.
 
 ---
 
@@ -40,8 +40,8 @@ The failure is specifically the stop edge. The start is announced by the person'
 
 - **The border is binary: full strength while listening, plain fade at the edges.** (session-settled: user-directed — chosen over a decay cue that tracks the silence timer, and over a loud exit flash: the border's disappearance is itself the signal, and a decay cue would require a live speech-activity signal that this design removes from scope.) Governs R4, R5.
 - **Attribution fails closed.** (session-settled: user-directed — chosen over fail-open and over treating any live microphone as the trigger: no stray border during calls, accepted with the silent-failure cost that R12 and R13 exist to answer.) Governs R6, R10, R12, R13.
-- **The app is a menu bar application.** (session-settled: user-directed — chosen over a headless launch agent and over a status item that appears only when unhealthy: the self-test and permission state need somewhere to live, and macOS needs a visible app to hang the TCC grants on.) Governs R12, R13, R14.
-- **The overlay and the permission provisioning are adopted from axshot rather than rebuilt.** (session-settled: user-directed — the window contract and TCC-stable signing are solved there and the failure modes are already documented.) Governs R1, R2, R15, R16.
+- **The app is a menu bar application.** (session-settled: user-directed — chosen over a headless launch agent and over a status item that appears only when unhealthy: the self-test and permission state need somewhere to live, and macOS needs a visible app to hang the TCC grants on.) Governs R12, R13.
+- **The overlay and the permission provisioning are adopted from axshot rather than rebuilt.** (session-settled: user-directed — the window contract and TCC-stable signing are solved there and the failure modes are already documented.) Governs R1, R2, R15.
 - **The band's blue is a fixed `#0A84FF`, chosen from rendered candidates rather than sampled from Apple's indicator.** (session-settled: user-directed — chosen over sampling the live Dictation indicator and over three other candidate blues, judged as the actual band on a dark desktop.) The value is fixed rather than appearance-following because the band is drawn over other applications' windows and states its own colour, as axshot's does. Governs R3.
 - **The self-test is a guided live test, not a passive precondition check.** (session-settled: user-directed — chosen over a passive precondition check and over running both: a precondition check can report healthy while detection is broken, which is the exact failure the test exists to catch.) Governs R12.
 - **A live microphone the app cannot attribute to Dictation gets no indication of its own.** (session-settled: user-directed — chosen over a quiet marker for the unattributed state and over a heuristic marker limited to dictation-shaped sessions: the guided live test answers the health question on demand, and a permanent marker would be present mostly during calls, which is not what it is for.) Governs R6.
@@ -74,12 +74,10 @@ The failure is specifically the stop edge. The start is announced by the person'
 
 - R12. An on-demand self-test prompts the person to start Dictation and then reports whether both the start and the stop were observed and how quickly, naming the missing permission or signal when detection fails. It does not report health from preconditions alone.
 - R13. The app records when it last successfully confirmed a Dictation session and shows that time.
-- R14. The app shows the live grant state of each permission it requires and offers to request each one.
 
 **Build and provisioning**
 
 - R15. Builds are signed with a stable self-signed certificate so TCC grants survive a rebuild; a build that falls back to ad-hoc signing says so rather than producing a binary whose grants will silently lapse.
-- R16. The app re-spawns itself with responsibility disclaimed, so TCC attributes grants to the app rather than to whatever launched it.
 - R17. The app is installed to `/Applications` and is never run from a temporary directory.
 
 **Availability**
@@ -123,7 +121,7 @@ stateDiagram-v2
 - AE4. A detector that has stopped working
   - **Covers R12.** Given the confirming signal no longer resolves, When the person runs the self-test and starts Dictation as it prompts, Then the test reports that the start was never observed and names the missing permission or signal, rather than reporting success because its preconditions still hold.
 - AE5. Rebuild during development
-  - **Covers R15, R16.** Given Accessibility has been granted, When the app is rebuilt and relaunched, Then the grant still holds and nothing has to be re-authorized.
+  - **Covers R15.** Given the app is registered as a login item, When it is rebuilt and relaunched, Then the registration still holds and does not have to be re-approved.
 - AE6. Displays of different heights
   - **Covers R1.** Given two displays of different heights, When the band is shown, Then each display carries its own complete band and no band segment runs through the dead space beside the shorter one.
 
@@ -131,7 +129,7 @@ stateDiagram-v2
 
 - The stop is visible within roughly 300ms of Dictation ceasing to listen — about half a spoken word, so the person stops mid-word rather than mid-sentence. This is a target; per R11 a more reliable but slower signal is preferred to a faster one that is sometimes wrong.
 - Over a week of ordinary use, the band never appears while Dictation is not running.
-- No rebuild during development requires re-granting Accessibility.
+- No rebuild during development requires re-approving the login item.
 - The self-test distinguishes a healthy detector with Dictation idle from a detector that has stopped working.
 
 ### Scope Boundaries
@@ -152,14 +150,17 @@ stateDiagram-v2
 - The `Axshot Local Signing` identity is shared between the two applications. One keychain approval covers both, and TCC records stay independent because they key on bundle identifier.
 - An application under a temporary directory cannot be granted Accessibility — LaunchServices registers no bundle there and `tccutil` cannot resolve the identifier — which is what R17 exists for. Requesting the grant from such a location also marks the client as prompted, so later requests return false with no dialog until the record is reset.
 - The 300ms stop budget is derived from the purpose rather than measured, and is deliberately not a gate (R11).
-- Detection requires no TCC grant of any kind. The notifications are delivered by `distnoted` to any process that observes them by name, and the confirming signal reads no window, so neither Screen Recording nor Accessibility is needed to detect Dictation. Both remain out of scope for detection; R14's permission rows cover only what the app needs for other reasons.
+- The app requires no TCC grant of any kind, for detection or anything else. The notifications are delivered by `distnoted` to any process that observes them by name, the confirming signal reads no window, and neither the overlay nor `SMAppService` needs a grant. This is what retired R14 and R16.
 - Microphone attribution turned out not to be needed, and the earlier note here was wrong on the facts. A public API does attribute a live microphone to a process: `kAudioHardwarePropertyProcessObjectList` with `kAudioProcessPropertyIsRunningInput`, `kAudioProcessPropertyPID` and `kAudioProcessPropertyBundleID`, available since macOS 14.2 and needing no TCC grant. MicState uses exactly that; its bundle-ID lists are user-editable policy filters applied after attribution, not the detection mechanism. R6 rests on the Dictation-specific notification instead, and the CoreAudio attribution is retained only as the cross-check inside R12's self-test.
 
 ### Outstanding Questions
 
-**Non-blocking — carried to the pull request**
+**Retired requirements (R14, R16)**
 
-- R14 and AE5 may now be vestigial, and nothing in planning can settle it. The detection finding removed every TCC grant the app was expected to need: the overlay needs none, the notifications need none, `SMAppService` needs none. R14 says the app shows the grant state of "each permission it requires", which is now plausibly an empty set, and AE5 is written as "Given Accessibility has been granted", which may never be true. R15's stable signing still earns its place — `SMAppService` registration is tied to the app's signed identity, so an ad-hoc rebuild would still break the login item — but R16's responsibility-disclaimed re-spawn exists only to attribute TCC grants, and with no grants to attribute it has no remaining purpose. Whether to drop R14, R16 and AE5, or keep a permissions surface against a future need, is a product-scope call. U5 and U1 are written to work either way; U5 omits the permission section when the set is empty rather than rendering it blank.
+- Dropped because the app needs no TCC grant at all. The detection finding removed every permission the design was built around: the overlay needs none, the distributed notifications need none, and `SMAppService` needs none. R14 would have rendered an empty permission list, and R16's responsibility-disclaimed re-spawn exists only to attribute TCC grants to the app rather than to its launcher, so with no grants to attribute it did nothing.
+- AE5 was rewritten rather than dropped. The rebuild case still matters; what must survive a rebuild is the login-item registration, not an Accessibility grant.
+- R15's stable signing is unaffected and still required. `SMAppService` registration is tied to the app's signed identity, so an ad-hoc rebuild would still break the login item even though no TCC grant is involved.
+- The IDs are left as gaps rather than renumbered, per the artifact's stable-ID rule. A future need for a permission surface takes the next unused number.
 
 **Deferred to Planning**
 
@@ -170,8 +171,6 @@ stateDiagram-v2
 - `HANDOFF.md` — the originating brief and the candidate-signal list.
 - axshot, `axshot.swift:5702` (`DriveFrameView`) — the band: a 4pt solid edge plus 16 concentric 1pt rings with quadratic alpha falloff, and the reasoning for one frame per display.
 - axshot, `axshot.swift:5577` (`DriveFrame`) — the window contract behind R2, including `sharingType = .none` and the screen-parameter observer.
-- axshot, `axshot.swift:4777` (`Permissions`) — the preflight/request split, the System Settings deep link, the `tccutil` reset for a stale record, and the settings rows that re-poll so a grant made elsewhere appears without a relaunch.
-- axshot, `axshot.swift:719` (`respawnDisclaimed`) — the basis for R16.
 - axshot, `create-signing-cert.sh` and `build.sh` — the basis for R15, including the keychain-dialog timeout and the ad-hoc fallback warning.
 - Verified on this machine, 2026-09-20, macOS 26.6.2, across two live Dictation sessions observed by an unsigned, unentitled command-line binary:
   - `DictationIM` posts `DictationIMNotificationWillStartListening`, `DictationIMNotificationStartedListening`, `DictationIMNotificationDidEnterDictationMode` and `DictationIMNotificationDidExitDictationMode` to `CFNotificationCenterGetDistributedCenter()`. No entitlement, no TCC grant, no private framework, no log scraping.
@@ -188,7 +187,7 @@ stateDiagram-v2
 
 ## Planning Contract
 
-**Product Contract preservation:** unchanged. No requirement was edited, split, or renumbered during enrichment. One conflict between the Product Contract and the detection finding is recorded in Open Questions rather than resolved here, because resolving it would change product scope.
+**Product Contract preservation:** changed — R14 and R16 retired, AE5 rewritten. The detection finding removed every TCC grant the app needs, which left all three without a subject. The reasoning is recorded under Outstanding Questions; IDs are left as gaps rather than renumbered.
 
 ### Key Technical Decisions
 
@@ -233,7 +232,7 @@ These are planning bets, not settled decisions. Each is cheap to reverse if impl
 - The coalescing window in R11a is a constant, not adaptive. Both observed sessions fit well inside 150ms; a third that did not would move the constant, not the design.
 - Fade durations are 120ms in and 180ms out. The Product Contract left them open (Outstanding Questions); slightly slower out than in keeps the disappearance from reading as a flicker. Reversible in one constant each.
 - `swift build` is available without an Xcode project on this toolchain (Swift 6.4, Xcode 27). If SwiftPM cannot produce a bundle-compatible binary, U1 falls back to axshot's `swiftc` invocation and KTD1 is withdrawn, taking `swift test` with it.
-- No TCC permission is required for anything the app does. See the Open Question below — this is the assumption that makes R14 vestigial.
+- No TCC permission is required for anything the app does. If implementation finds one that is, that is a finding against this assumption, and a permission surface comes back under a new ID.
 
 ### Sequencing
 
@@ -246,15 +245,15 @@ U1 first: nothing can be granted, registered, or observed until the app is a sig
 ### U1. Signed app bundle and install script
 
 - **Goal:** A `.app` that launches as a menu bar accessory, signed with the shared local identity, installed to `/Applications`.
-- **Requirements:** R15, R16, R17
+- **Requirements:** R15, R17
 - **Dependencies:** none
 - **Files:** `Package.swift`, `Sources/dictation-glow/main.swift`, `Sources/DictationGlowCore/` (empty placeholder), `build.sh`, `create-signing-cert.sh`, `.gitignore`
 - **Approach:**
   1. Copy `create-signing-cert.sh` from axshot unchanged except for the identity default, keeping the `Axshot Local Signing` name so one keychain approval covers both apps.
   2. `build.sh` runs `swift build -c release`, assembles `Contents/MacOS` and `Contents/Info.plist` around the product, signs with the identity, and installs to `/Applications`, warning on ad-hoc fallback exactly as axshot's does.
   3. `Info.plist` sets `LSUIElement`, the bundle identifier, and `LSMinimumSystemVersion`.
-  4. `main.swift` sets `NSApp.setActivationPolicy(.accessory)` and runs an empty delegate, and re-spawns with responsibility disclaimed per KTD2's source.
-- **Patterns to follow:** axshot `build.sh`, `create-signing-cert.sh`, and `axshot.swift:719` for the disclaimed re-spawn.
+  4. `main.swift` sets `NSApp.setActivationPolicy(.accessory)` and runs an empty delegate.
+- **Patterns to follow:** axshot `build.sh` and `create-signing-cert.sh`.
 - **Execution note:** This is packaging. Prefer an install-and-launch smoke check over unit coverage.
 - **Test scenarios:** Test expectation: none — packaging and scaffolding, no behavior to assert. Verification is the smoke check below.
 - **Verification:** `build.sh` produces `/Applications/DictationGlow.app`; launching it puts an item in the menu bar and no icon in the Dock; `codesign -dv` reports the local identity rather than ad-hoc.
@@ -320,14 +319,13 @@ U1 first: nothing can be granted, registered, or observed until the app is a sig
 ### U5. Menu bar and login item
 
 - **Goal:** A status item with the app's controls, and registration at login.
-- **Requirements:** R14, R18
+- **Requirements:** R18
 - **Dependencies:** U4
 - **Files:** `Sources/dictation-glow/MenuBar.swift`, `Sources/dictation-glow/LoginItem.swift`
 - **Approach:**
   1. `NSStatusItem` with a menu; no window by default.
   2. Register with `SMAppService.mainApp` on first run per KTD5, and expose a toggle reflecting `SMAppService.mainApp.status`, restoring the toggle and reporting the error when registration throws.
-  3. Permission rows per R14 render whatever the app actually requires — see the Open Question; if that set is empty, the section is omitted rather than shown empty.
-- **Patterns to follow:** axshot `axshot.swift:5461` for the login-item toggle and its error restore; `axshot.swift:4777` for the permission-row shape if any rows survive.
+- **Patterns to follow:** axshot `axshot.swift:5461` for the login-item toggle and its error restore.
 - **Test scenarios:**
   - Covers R18. First run with no prior registration calls register exactly once.
   - Covers R18. A run where status is already `.enabled` does not re-register.
@@ -396,7 +394,7 @@ This repo has no CI yet and no test runner beyond SwiftPM. These are the gates.
 | Install smoke | launch `/Applications/DictationGlow.app` | U1, U5 | Menu bar item appears, no Dock icon |
 | Live detection | start and stop Dictation | U3, U4, U8 | Band follows both edges |
 | Self-test | menu → run self-test | U7 | Pass with two latencies |
-| Grant survival | rebuild, relaunch | U1 | Login-item registration survives the rebuild |
+| Registration survival | rebuild, relaunch | U1, U5 | Login-item registration survives the rebuild |
 
 `swift test` covers the pure logic only. Everything that touches `NSWindow`, `SMAppService`, or the live notification stream is verified by the live gates above, because those cannot be asserted without the real system.
 
