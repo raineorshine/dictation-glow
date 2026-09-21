@@ -73,9 +73,6 @@ So the only way to check the overlay is to look at it:
 
 A capture coming back without the band proves nothing. Do not treat an empty screenshot as evidence the overlay is broken.
 
-## Still unverified
+## Coverage
 
-Two cases from the plan have not been exercised against a real session:
-
-- Each start path — Globe double-tap, the Fn key, a custom shortcut, the Edit menu. Only one path has been observed, and there is no reason to think `DictationIM` behaves differently across them, but it has not been checked.
-- A session where another application holds the microphone throughout. The architecture makes this a non-issue by construction, since nothing in the detection path consults audio, but it has not been confirmed live.
+Confirmed against real dictation sessions: every start path — Globe double-tap, the Fn key, a custom shortcut, the Edit menu — and a session where another application held the microphone throughout. Detection behaves the same in all of them, which is what the architecture predicts: nothing in the detection path reads audio, and every start path goes through the same `DictationIM`.

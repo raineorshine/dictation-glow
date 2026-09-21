@@ -14,7 +14,7 @@ The overlay exists so the transition is visible without looking. Blue border mea
 
 Working. The overlay, the detector, the menu bar, the login item, the event log, and the self-test are all built and verified.
 
-Two cases have not been exercised against a real dictation session: each of the start paths, and a session where another application holds the microphone throughout. See [docs/detection.md](docs/detection.md).
+Detection is confirmed against every start path and against a session sharing the microphone with another application. See [docs/detection.md](docs/detection.md).
 
 ## Design decisions
 
