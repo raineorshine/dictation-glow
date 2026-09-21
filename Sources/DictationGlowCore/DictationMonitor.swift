@@ -26,10 +26,17 @@ public final class DictationMonitor: NSObject {
   public var onEvent: ((DictationEvent, Date) -> Void)?
 
   private let center: DistributedNotificationCenter
+  private let names: [String]
   private var started = false
 
-  public init(center: DistributedNotificationCenter = .default()) {
+  /// `names` is injectable so the self-test can be pointed at a name nothing posts, which is
+  /// the only way to prove a dead detector reports as dead rather than as an idle system.
+  public init(
+    center: DistributedNotificationCenter = .default(),
+    names: [String] = DictationMonitor.observedNames
+  ) {
     self.center = center
+    self.names = names
     super.init()
   }
 
@@ -38,11 +45,11 @@ public final class DictationMonitor: NSObject {
   public func start() {
     guard !started else { return }
     started = true
-    for event in DictationEvent.allCases {
+    for name in names {
       center.addObserver(
         self,
         selector: #selector(receive(_:)),
-        name: Notification.Name(event.rawValue),
+        name: Notification.Name(name),
         object: nil,
         suspensionBehavior: .deliverImmediately)
     }

@@ -23,6 +23,40 @@ if arguments.first == "--login-status" {
   exit(0)
 }
 
+if arguments.first == "--self-test" {
+  // The same session object the menu's test uses, without the modal. This is how the test
+  // itself is verified, including its failure path.
+  let seconds = Double(arguments.dropFirst().first ?? "") ?? 20
+  // --broken points the monitor at a name nothing posts, to prove a dead detector is
+  // reported as dead rather than as an idle system.
+  let broken = arguments.contains("--broken")
+  let monitor = broken ? DictationMonitor(names: ["DictationGlowNotificationThatNeverFires"])
+                       : DictationMonitor()
+  let machine = EdgeMachine()
+  let session = SelfTestSession()
+  var settled = false
+  machine.onChange = { state in
+    session.observe(state)
+    if state == .idle, !settled {
+      settled = true
+      let result = session.resolve(timedOut: false)
+      print("outcome=\(result.outcome)")
+      print(result.summary)
+      exit(result.outcome == .passed ? 0 : 1)
+    }
+  }
+  monitor.onEvent = { event, _ in machine.handle(event) }
+  monitor.start()
+  DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+    guard !settled else { return }
+    let result = session.resolve(timedOut: true)
+    print("outcome=\(result.outcome)")
+    print(result.summary)
+    exit(1)
+  }
+  application.run()
+}
+
 if arguments.first == "--show-band" {
   let seconds = Double(arguments.dropFirst().first ?? "") ?? 3
   let overlay = GlowOverlay()

@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private lazy var policy = VisibilityPolicy(band: overlay)
   private var menuBar: MenuBar?
   private let log = EventLog(directory: EventLog.defaultDirectory())
+  private let selfTest = SelfTestRunner()
 
   /// Prints each state change, so the wiring can be checked against real notifications
   /// without a menu bar to look at.
@@ -18,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       guard let self else { return }
       self.policy.apply(state)
       self.log.noteStateChange(state)
+      self.selfTest.observe(state)
       if self.tracing {
         print("state=\(state) at \(Date().timeIntervalSince1970)")
         fflush(stdout)
@@ -37,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let bar = MenuBar()
     bar.lastConfirmedDescription = { [weak self] in
       self?.log.lastConfirmedDescription() ?? "No dictation session seen yet"
+    }
+    bar.onRunSelfTest = { [weak self] in
+      guard let self else { return }
+      self.selfTest.run(currentState: self.machine.state)
     }
     menuBar = bar
     LoginItem.registerOnFirstRunIfNeeded()
