@@ -1,0 +1,8 @@
+.DS_Store
+*.app/
+bin/
+build/
+.build/
+*.o
+*.dSYM/
+.compound-engineering/config.local.yaml
