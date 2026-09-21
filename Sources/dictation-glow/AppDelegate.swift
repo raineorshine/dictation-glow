@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private let monitor = DictationMonitor()
   private let machine = EdgeMachine()
   private lazy var policy = VisibilityPolicy(band: overlay)
+  private var menuBar: MenuBar?
 
   /// Prints each state change, so the wiring can be checked against real notifications
   /// without a menu bar to look at.
@@ -29,5 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self.machine.handle(event)
     }
     monitor.start()
+
+    menuBar = MenuBar()
+    LoginItem.registerOnFirstRunIfNeeded()
   }
 }
