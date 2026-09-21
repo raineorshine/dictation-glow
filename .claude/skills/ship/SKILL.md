@@ -135,8 +135,16 @@ BRANCH=$(git branch --show-current) && MAIN=$(git worktree list | head -1 | awk 
 
 Invoke the `learn` skill. Whatever the session learned about the app, the tree or the workflow is
 still in context now and in nobody's an hour later, so this is the last stage of shipping and needs
-no ask. Skip it where the learnings were written as the work went — and then say in one line where
-they went, rather than saying nothing.
+no ask. Skip it only where every learning is already written and this step writes nothing — and
+then say in one line where they went, rather than saying nothing.
+
+**Some of them being written is not the skip.** A session that filed a solution doc as it went and
+still has a learning left over is a session that has to run the skill for the remainder, not one
+that may write the remainder freehand here. `learn` carries the test for where a line belongs —
+the agent file when it changes how an agent acts in this repo, the topic doc when it only matters
+for one mechanism — and that test is not applied by a step that never loads it. The failure it
+catches looks small: a how-to and its gotcha, appended to AGENTS.md during a ship, which belonged
+in `docs/detection.md` beside the mechanism they describe.
 
 `learn` puts `📚 ` on the title; put `🚀 ` back when it finishes.
 
