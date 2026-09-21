@@ -8,8 +8,6 @@ application.setActivationPolicy(.accessory)
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
-// Shows the band for a few seconds and exits. Not a feature -- it is how the overlay is
-// checked against a real window server, which no unit test can do.
 if arguments.first == "--login-status" {
   // Says what the login-item record actually holds. Reading status repoints that record at
   // whichever copy reads it, so this refuses to run from anywhere but the installed app.
@@ -57,6 +55,8 @@ if arguments.first == "--self-test" {
   application.run()
 }
 
+// Shows the band for a few seconds and exits. Not a feature -- it is how the overlay is
+// checked against a real window server, which no unit test can do.
 if arguments.first == "--show-band" {
   let seconds = Double(arguments.dropFirst().first ?? "") ?? 3
   let overlay = GlowOverlay()

@@ -6,6 +6,7 @@ final class MenuBar {
   private let item: NSStatusItem
   private let menu = NSMenu()
   private var launchItem: NSMenuItem!
+  private let menuDelegate = MenuRefresher()
   private var statusLine: NSMenuItem!
 
   /// Asked for the line that says when detection last worked, so the menu does not hold a
@@ -42,8 +43,8 @@ final class MenuBar {
       keyEquivalent: "q")
     menu.addItem(quit)
 
-    menu.delegate = MenuRefresher.shared
-    MenuRefresher.shared.onOpen = { [weak self] in self?.refresh() }
+    menuDelegate.onOpen = { [weak self] in self?.refresh() }
+    menu.delegate = menuDelegate
     item.menu = menu
   }
 
@@ -69,9 +70,10 @@ final class MenuBar {
   }
 }
 
-/// Menus have no block-based will-open hook, so the delegate is its own object.
+/// Menus have no block-based will-open hook, so the delegate is its own object. It is owned
+/// by the MenuBar it serves rather than shared: a second MenuBar would otherwise overwrite
+/// the first one's callback and quietly refresh the wrong instance.
 private final class MenuRefresher: NSObject, NSMenuDelegate {
-  static let shared = MenuRefresher()
   var onOpen: () -> Void = {}
   func menuWillOpen(_ menu: NSMenu) { onOpen() }
 }

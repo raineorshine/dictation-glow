@@ -52,7 +52,9 @@ public final class SelfTestSession {
 
   public func resolve(at when: Date = Date(), timedOut: Bool) -> Result {
     let startLatency = observedStart.map { $0.timeIntervalSince(startedAt) }
-    let stopLatency = zip2(observedStart, observedStop).map { $1.timeIntervalSince($0) }
+    let stopLatency = observedStart.flatMap { start in
+      observedStop.map { $0.timeIntervalSince(start) }
+    }
 
     switch (observedStart, observedStop) {
     case (nil, _):
@@ -82,10 +84,5 @@ public final class SelfTestSession {
         startLatency: startLatency,
         stopLatency: stopLatency)
     }
-  }
-
-  private func zip2<A, B>(_ a: A?, _ b: B?) -> (A, B)? {
-    guard let a, let b else { return nil }
-    return (a, b)
   }
 }

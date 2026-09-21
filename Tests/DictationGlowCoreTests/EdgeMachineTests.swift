@@ -2,30 +2,8 @@ import XCTest
 @testable import DictationGlowCore
 
 final class EdgeMachineTests: XCTestCase {
-  /// Drives the machine without waiting: the coalescing window is resolved by advancing a
-  /// clock, not by sleeping.
-  private final class TestClock: MachineClock {
-    var now: TimeInterval = 0
-    private var pending: [(fireAt: TimeInterval, action: () -> Void)] = []
-    func schedule(after delay: TimeInterval, _ action: @escaping () -> Void) -> Cancellable {
-      let token = Token()
-      pending.append((now + delay, { if !token.cancelled { action() } }))
-      return token
-    }
-    func advance(_ by: TimeInterval) {
-      now += by
-      let due = pending.filter { $0.fireAt <= now }
-      pending.removeAll { $0.fireAt <= now }
-      due.forEach { $0.action() }
-    }
-    final class Token: Cancellable {
-      var cancelled = false
-      func cancel() { cancelled = true }
-    }
-  }
-
-  private func makeMachine() -> (EdgeMachine, TestClock, () -> [EdgeMachine.State]) {
-    let clock = TestClock()
+  private func makeMachine() -> (EdgeMachine, FakeClock, () -> [EdgeMachine.State]) {
+    let clock = FakeClock()
     var seen: [EdgeMachine.State] = []
     let machine = EdgeMachine(clock: clock)
     machine.onChange = { seen.append($0) }

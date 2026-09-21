@@ -53,7 +53,7 @@ final class VisibilityPolicyTests: XCTestCase {
   // an audio stream conceptually held open throughout: the stop still lands, because nothing
   // in this path consults audio.
   func testStopLandsWhileAnotherProcessHoldsTheMicrophone() {
-    let clock = ManualClock()
+    let clock = FakeClock()
     let band = RecordingBand()
     let machine = EdgeMachine(clock: clock)
     let policy = VisibilityPolicy(band: band)
@@ -67,25 +67,5 @@ final class VisibilityPolicyTests: XCTestCase {
     clock.advance(EdgeMachine.coalescingWindow + 0.01)
     XCTAssertFalse(band.isVisible)
     XCTAssertEqual(band.calls, ["show", "hide"])
-  }
-
-  private final class ManualClock: MachineClock {
-    private var pending: [(at: TimeInterval, run: () -> Void)] = []
-    private var now: TimeInterval = 0
-    func schedule(after delay: TimeInterval, _ action: @escaping () -> Void) -> Cancellable {
-      let token = Token()
-      pending.append((now + delay, { if !token.cancelled { action() } }))
-      return token
-    }
-    func advance(_ by: TimeInterval) {
-      now += by
-      let due = pending.filter { $0.at <= now }
-      pending.removeAll { $0.at <= now }
-      due.forEach { $0.run() }
-    }
-    final class Token: Cancellable {
-      var cancelled = false
-      func cancel() { cancelled = true }
-    }
   }
 }

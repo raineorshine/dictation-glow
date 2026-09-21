@@ -35,17 +35,14 @@ public enum BandGeometry {
 
   /// Quadratic, so the shadow leaves the band quickly and then trails off, which is what an
   /// inset shadow looks like. A linear ramp reads as a stack of rings instead.
-  public static var ringAlphas: [CGFloat] {
-    (0..<ringCount).map { i in
-      let fade = pow(1 - CGFloat(i) / CGFloat(ringCount), 2)
-      return peakAlpha * fade
-    }
+  public static let ringAlphas: [CGFloat] = (0..<ringCount).map { i in
+    let fade = pow(1 - CGFloat(i) / CGFloat(ringCount), 2)
+    return peakAlpha * fade
   }
 
   /// Each ring sits one step further in than the last, starting just inside the solid edge.
-  public static var ringInsets: [CGFloat] {
+  public static let ringInsets: [CGFloat] =
     (0..<ringCount).map { edgeWidth + CGFloat($0) * ringWidth }
-  }
 
   /// R3. Fixed, not appearance-following: the band is drawn over other applications'
   /// windows and states its own colour rather than borrowing one from the system.

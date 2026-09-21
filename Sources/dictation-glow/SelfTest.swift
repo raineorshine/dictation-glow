@@ -42,15 +42,14 @@ final class SelfTestRunner {
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.window, execute: item)
 
     // There is no supported way to start Dictation programmatically, so the person does it.
-    let alert = NSAlert()
-    alert.messageText = "Start dictation now"
-    alert.informativeText = """
-      Press your Dictation shortcut, say a few words, then stop. This window closes by \
-      itself once a full session has been seen, or after a minute.
-      """
+    let alert = Self.makeAlert(
+      title: "Start dictation now",
+      text: """
+        Press your Dictation shortcut, say a few words, then stop. This window closes by \
+        itself once a full session has been seen, or after a minute.
+        """)
     alert.addButton(withTitle: "Cancel")
     panel = alert
-    NSApp.activate(ignoringOtherApps: true)
     if alert.runModal() == .alertFirstButtonReturn {
       cancel()
     }
@@ -70,10 +69,12 @@ final class SelfTestRunner {
     self.session = nil
     let result = session.resolve(timedOut: timedOut)
 
-    if let panel {
-      self.panel = nil
+    // The prompt's runModal() is still on the stack: a nested modal run loop keeps servicing
+    // the notifications that got us here, so the alert would sit there until clicked even
+    // though the result is already known.
+    if panel != nil {
+      panel = nil
       NSApp.abortModal()
-      _ = panel
     }
 
     DispatchQueue.main.async {
@@ -91,12 +92,19 @@ final class SelfTestRunner {
   }
 
   private func present(title: String, text: String, style: NSAlert.Style) {
+    let alert = Self.makeAlert(title: title, text: text)
+    alert.alertStyle = style
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+  }
+
+  /// The app is never frontmost, so every alert has to ask for the foreground before it can
+  /// be seen. Callers add their own buttons.
+  private static func makeAlert(title: String, text: String) -> NSAlert {
     let alert = NSAlert()
     alert.messageText = title
     alert.informativeText = text
-    alert.alertStyle = style
-    alert.addButton(withTitle: "OK")
     NSApp.activate(ignoringOtherApps: true)
-    alert.runModal()
+    return alert
   }
 }
