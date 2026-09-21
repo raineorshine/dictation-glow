@@ -149,6 +149,7 @@ stateDiagram-v2
 - The `Axshot Local Signing` identity is shared between the two applications. One keychain approval covers both, and TCC records stay independent because they key on bundle identifier.
 - An application under a temporary directory cannot be granted Accessibility — LaunchServices registers no bundle there and `tccutil` cannot resolve the identifier — which is what R17 exists for. Requesting the grant from such a location also marks the client as prompted, so later requests return false with no dialog until the record is reset.
 - The 300ms stop budget is derived from the purpose rather than measured, and is deliberately not a gate (R11).
+- Detection requires no TCC grant of any kind. The notifications are delivered by `distnoted` to any process that observes them by name, and the confirming signal reads no window, so neither Screen Recording nor Accessibility is needed to detect Dictation. Both remain out of scope for detection; R14's permission rows cover only what the app needs for other reasons.
 - Microphone attribution turned out not to be needed, and the earlier note here was wrong on the facts. A public API does attribute a live microphone to a process: `kAudioHardwarePropertyProcessObjectList` with `kAudioProcessPropertyIsRunningInput`, `kAudioProcessPropertyPID` and `kAudioProcessPropertyBundleID`, available since macOS 14.2 and needing no TCC grant. MicState uses exactly that; its bundle-ID lists are user-editable policy filters applied after attribution, not the detection mechanism. R6 rests on the Dictation-specific notification instead, and the CoreAudio attribution is retained only as the cross-check inside R12's self-test.
 
 ### Outstanding Questions
@@ -156,12 +157,6 @@ stateDiagram-v2
 **Deferred to Planning**
 
 - Fade durations.
-
-**Answered**
-
-- Which signal confirms Dictation — the `DictationIMNotificationStartedListening` / `DictationIMNotificationDidExitDictationMode` distributed-notification pair. Answered by direct observation, 2026-09-20.
-- Whether Screen Recording is required — no. The confirming signal reads no window, so neither Screen Recording nor Accessibility is needed for detection.
-- Whether any permission is required for detection — none. The notifications are delivered by `distnoted` to any process that observes them by name.
 
 ### Sources and Research
 
