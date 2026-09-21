@@ -55,7 +55,7 @@ The failure is specifically the stop edge. The start is announced by the person'
 **Overlay**
 
 - R1. The overlay draws a band on the outer edge of every active display, one frame per display rather than one frame around the bounding box of all displays.
-- R2. The overlay window does not activate, ignores mouse events, joins all Spaces, stays stationary, floats above full screen windows, and excludes itself from screen capture.
+- R2. The overlay window does not activate, ignores mouse events, joins all Spaces, stays stationary, floats above full screen windows, and opts out of screen capture as far as the platform still allows. `sharingType = .none` excludes it from the legacy capture path only; since macOS 15.4 it no longer excludes a window from ScreenCaptureKit, so the band is expected to appear in modern screen recordings and shares.
 - R3. The band is `#0A84FF`, the dark-variant macOS system blue. The value is fixed and does not follow the system appearance or accent colour.
 - R4. The band is at full strength whenever it is shown and carries no partial or intermediate states.
 - R5. The band fades in when Dictation starts listening and fades out when it stops.
@@ -150,6 +150,7 @@ stateDiagram-v2
 - The `Axshot Local Signing` identity is shared between the two applications. One keychain approval covers both, and TCC records stay independent because they key on bundle identifier.
 - An application under a temporary directory cannot be granted Accessibility — LaunchServices registers no bundle there and `tccutil` cannot resolve the identifier — which is what R17 exists for. Requesting the grant from such a location also marks the client as prompted, so later requests return false with no dialog until the record is reset.
 - The 300ms stop budget is derived from the purpose rather than measured, and is deliberately not a gate (R11).
+- `sharingType = .none` is not capture protection on macOS 15.4 or later. Apple DTS states there are no public APIs for preventing screen capture, and a window marked `.none` is still captured by ScreenCaptureKit. Verified here only for the legacy path: a `screencapture` taken while the band was up did not contain it. The ScreenCaptureKit behaviour is taken from Apple's statement rather than measured, because measuring it needs a Screen Recording grant this app otherwise never asks for.
 - The app requires no TCC grant of any kind, for detection or anything else. The notifications are delivered by `distnoted` to any process that observes them by name, the confirming signal reads no window, and neither the overlay nor `SMAppService` needs a grant. This is what retired R14 and R16.
 - Microphone attribution turned out not to be needed, and the earlier note here was wrong on the facts. A public API does attribute a live microphone to a process: `kAudioHardwarePropertyProcessObjectList` with `kAudioProcessPropertyIsRunningInput`, `kAudioProcessPropertyPID` and `kAudioProcessPropertyBundleID`, available since macOS 14.2 and needing no TCC grant. MicState uses exactly that; its bundle-ID lists are user-editable policy filters applied after attribution, not the detection mechanism. R6 rests on the Dictation-specific notification instead, and the CoreAudio attribution is retained only as the cross-check inside R12's self-test.
 

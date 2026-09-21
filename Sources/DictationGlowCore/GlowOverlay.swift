@@ -110,9 +110,11 @@ public final class GlowOverlay {
     // stay visible.
     window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
     window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-    // Taken out of every capture on the machine by the window's sharing type rather than by
-    // being hidden around each shutter: a band at the screen's edge is inside any capture
-    // that reaches it, and the process photographing is not always this one.
+    // Opts out of the legacy capture path, where it works: a band at the screen's edge is
+    // inside any capture that reaches it, and the process photographing is not always this
+    // one. It is not capture protection -- since macOS 15.4 a window marked .none is still
+    // captured by ScreenCaptureKit, and Apple states there is no public API that prevents
+    // capture -- so expect the band in screen recordings and shares.
     window.sharingType = .none
     window.contentView = BandView()
     return window

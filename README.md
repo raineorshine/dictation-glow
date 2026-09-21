@@ -32,7 +32,7 @@ That choice has a cost worth stating outright: a broken detector and an idle Dic
 
 The perimeter band is taken from [axshot](https://github.com/raineorshine/axshot)'s drive frame: a solid band on each screen's own edge, with the inward falloff drawn as concentric rings rather than as a blur. One frame per screen rather than one around the bounding box, so two displays of different heights do not leave a band running through dead space.
 
-The window is non-activating, ignores mouse events, joins all Spaces, is stationary, sits above full screen windows, and excludes itself from screen capture so it does not appear in anyone's screenshots.
+The window is non-activating, ignores mouse events, joins all Spaces, is stationary, and sits above full screen windows. It opts out of screen capture, which keeps it out of ordinary screenshots but not out of screen recordings: since macOS 15.4 that opt-out no longer applies to ScreenCaptureKit, and Apple says no public API prevents capture.
 
 ## Permissions
 
