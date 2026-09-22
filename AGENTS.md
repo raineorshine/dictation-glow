@@ -7,6 +7,7 @@ A macOS menu bar utility that draws a blue band around every display while nativ
 ```
 ./build.sh        # builds, signs, installs to /Applications
 swift test        # unit tests (pure logic only)
+node scripts/check-doc-citations.mjs   # the docs' citations
 ```
 
 `swift test` covers `DictationGlowCore`. Everything touching `NSWindow`, `SMAppService`, or the live notification stream has no unit coverage by design — those are verified against the running system, and the gates are listed in the plan's Verification Contract.
@@ -82,5 +83,7 @@ only when the user asks for it.
 ## Learnings
 
 Past problems and their reasoning are filed under [docs/solutions/](docs/solutions/), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Check there before re-investigating something that looks like it has been hit before.
+
+**A doc claims as little about the present tree as its point allows, and never a line number.** A `:NN` resolves forever and drifts silently: the reader who checks it lands on whatever moved into that position and reads it as confirmation, which is worse than a dangling reference. Every line number in this repo's solution docs had drifted by the time the rule was written — the citation for `BandView.build(on:)` pointed 70 lines short of it, and the one for `sharingType` at a line in a different function. Name the symbol instead; it moves with the thing it names. `scripts/check-doc-citations.mjs` is a gate over `docs/**`: it bans the form and checks that every cited path and doc link resolves, at the repo root or under a source root, with the files in sibling repos listed as foreign because nothing here can keep them in step. **What no gate can check is whether the prose still describes the code**, which is why an episode is written in the past tense about the tree it happened on: a measurement keeps its figures and says what they measured, and a mechanism that has since been replaced is marked and linked forward rather than rewritten, or the record of why the fix made sense goes with it. Ported from github-triage, which runs the same check from `npm run lint`.
 
 [CONCEPTS.md](CONCEPTS.md) holds the shared domain vocabulary — the words that mean something specific here, like Band, Edge and the coalescing window. Relevant when orienting to the codebase or naming things in it.

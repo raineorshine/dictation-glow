@@ -170,8 +170,8 @@ stateDiagram-v2
 ### Sources and Research
 
 - `HANDOFF.md` — the originating brief and the candidate-signal list.
-- axshot, `axshot.swift:5702` (`DriveFrameView`) — the band: a 4pt solid edge plus 16 concentric 1pt rings with quadratic alpha falloff, and the reasoning for one frame per display.
-- axshot, `axshot.swift:5577` (`DriveFrame`) — the window contract behind R2, including `sharingType = .none` and the screen-parameter observer.
+- axshot, `axshot.swift` (`DriveFrameView`) — the band: a 4pt solid edge plus 16 concentric 1pt rings with quadratic alpha falloff, and the reasoning for one frame per display.
+- axshot, `axshot.swift` (`DriveFrame`) — the window contract behind R2, including `sharingType = .none` and the screen-parameter observer.
 - axshot, `create-signing-cert.sh` and `build.sh` — the basis for R15, including the keychain-dialog timeout and the ad-hoc fallback warning.
 - Verified on this machine, 2026-09-20, macOS 26.6.2, across two live Dictation sessions observed by an unsigned, unentitled command-line binary:
   - `DictationIM` posts `DictationIMNotificationWillStartListening`, `DictationIMNotificationStartedListening`, `DictationIMNotificationDidEnterDictationMode` and `DictationIMNotificationDidExitDictationMode` to `CFNotificationCenterGetDistributedCenter()`. No entitlement, no TCC grant, no private framework, no log scraping.
@@ -181,8 +181,8 @@ stateDiagram-v2
   - `corespeechd` holds `kAudioProcessPropertyIsRunningInput` in roughly 4-second bursts every 30–90 seconds when Dictation is idle, running `CSSelfTriggerDetector` voice-trigger scoring. Any rule keyed on CoreSpeech owning input false-positives continuously.
   - `DictationIM` launched fresh 1.4s before the first session rather than running persistently, so process presence is unreliable in both directions.
 - Control Center's own attribution is `SystemStatus.framework` — `STDataAccessStatusDomain` publishing `STDataAccessAttribution` with `microphoneRecordingAttribution`, an `STAttributedEntity` naming the bundle, and start/end timestamps. It is gated behind the Apple-internal entitlements `com.apple.systemstatus.activityattribution` and `com.apple.systemstatus.domains`, which a third party cannot hold. Closed door, not a fragility tradeoff; recorded so it is not revisited.
-- `evbuildsnet/micstate` — the only field attempt at real attribution, via the public CoreAudio process-object properties. `Sources/MicState/MicPresence.swift:26-73`.
-- `naveen/miccheck`, `TuanBT/MacMute`, `oochernyshev/lockmic` — read for detection technique. MicCheck and MacMute watch `kAudioDevicePropertyDeviceIsRunningSomewhere` with no attribution; LockMic detects microphone activity not at all. MacMute watches every input device rather than only the default, and its `TeamsAccessibility.swift:178-187` shows how to force a full AX tree out of a Chromium app should that ever be needed.
+- `evbuildsnet/micstate` — the only field attempt at real attribution, via the public CoreAudio process-object properties, in its `Sources/MicState/MicPresence.swift`.
+- `naveen/miccheck`, `TuanBT/MacMute`, `oochernyshev/lockmic` — read for detection technique. MicCheck and MacMute watch `kAudioDevicePropertyDeviceIsRunningSomewhere` with no attribution; LockMic detects microphone activity not at all. MacMute watches every input device rather than only the default, and its `TeamsAccessibility.swift` shows how to force a full AX tree out of a Chromium app should that ever be needed.
 
 ---
 
@@ -196,7 +196,7 @@ stateDiagram-v2
 - KTD2. Copy axshot's overlay window and band geometry rather than importing or linking it. The two apps share no code at runtime; axshot is a source to read, not a dependency (see Dependencies and Assumptions). Copying keeps `sharingType = .none`, the per-screen band, and the screen-parameter observer, which the Product Contract requires in R1 and R2. (session-settled: user-approved — chosen over building the overlay fresh: the window contract and its failure modes are already solved and documented there.) Governs R1, R2.
 - KTD3. The detector is a state machine over the notification stream, not a direct notification-to-visibility binding. `DidExitDictationMode` is not self-evidently a stop — R11a says a start sequence emits one — so the machine holds a pending-stop for the coalescing window and cancels it if a start notification follows. This is the piece that carries real logic, and it is the piece `swift test` covers. Governs R6, R7, R11a.
 - KTD4. Observe through `DistributedNotificationCenter.default()` and register each notification name explicitly, never a nil-name catch-all. A catch-all would receive every distributed notification on the system, which is both a privacy surface and a performance cost for an app that idles all day. Governs R6, R19.
-- KTD5. `SMAppService.mainApp` for the login item. Confirmed in use by axshot at `axshot.swift:5461` on this macOS with a locally self-signed app, which is the same signing posture this app will have. (session-settled: user-directed — chosen over an opt-in registration and over manual start only: an app that is not running is the one no-band cause the self-test cannot diagnose.) Governs R18.
+- KTD5. `SMAppService.mainApp` for the login item. Confirmed in use by axshot's own login-item registration on this macOS with a locally self-signed app, which is the same signing posture this app will have. (session-settled: user-directed — chosen over an opt-in registration and over manual start only: an app that is not running is the one no-band cause the self-test cannot diagnose.) Governs R18.
 - KTD6. The event log is a bounded in-memory ring plus an append-only file under `~/Library/Logs/`. R19 needs a session that already failed to be diagnosable afterwards, so the record has to outlive the process; a ring alone would not, and an unbounded file would grow without limit on a login-item app. Governs R19, R13.
 - KTD7. The self-test drives the real detector, not a copy of it. It subscribes to the same state machine the overlay uses and reports what that machine saw. A self-test with its own observation path could pass while the live one is broken, which is the failure R12 exists to catch. Governs R12.
 
@@ -270,7 +270,7 @@ U1 first: nothing can be granted, registered, or observed until the app is a sig
   2. Port `DriveFrameView`'s layer stack — a 4pt solid edge plus 16 concentric 1pt rings at quadratic alpha falloff — substituting `#0A84FF` for the pink, per KTD2 and R3.
   3. Rebuild the band on `NSApplication.didChangeScreenParametersNotification`.
   4. Expose `show()` and `hide()` that fade per the Assumptions, and nothing else — visibility policy belongs to U4.
-- **Patterns to follow:** axshot `axshot.swift:5577` and `axshot.swift:5702`.
+- **Patterns to follow:** axshot's `DriveFrame` and `DriveFrameView`, both in `axshot.swift`.
 - **Test scenarios:**
   - Covers R1. Given two screen frames of different heights, the geometry returns one band rect per screen and no rect covering the dead space beside the shorter one.
   - Covers R1. Given one screen, the geometry returns exactly one band rect matching that screen's frame.
@@ -326,7 +326,7 @@ U1 first: nothing can be granted, registered, or observed until the app is a sig
 - **Approach:**
   1. `NSStatusItem` with a menu; no window by default.
   2. Register with `SMAppService.mainApp` on first run per KTD5, and expose a toggle reflecting `SMAppService.mainApp.status`, restoring the toggle and reporting the error when registration throws.
-- **Patterns to follow:** axshot `axshot.swift:5461` for the login-item toggle and its error restore.
+- **Patterns to follow:** axshot's login-item toggle and its error restore.
 - **Test scenarios:**
   - Covers R18. First run with no prior registration calls register exactly once.
   - Covers R18. A run where status is already `.enabled` does not re-register.

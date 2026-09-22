@@ -23,11 +23,12 @@ session pushed. Pushing from the worktree keeps shipping independent of the main
 ### 1. Gates: tests, then a signed build
 
 ```bash
-swift test && ./build.sh --no-install
+swift test && ./build.sh --no-install && node scripts/check-doc-citations.mjs
 ```
 
 `swift test` covers `DictationGlowCore` and nothing that touches `NSWindow`, `SMAppService` or the
-live notification stream. `--no-install` keeps an unverified build out of `/Applications`; the last
+live notification stream. The third reads the docs' citations and nothing else — see AGENTS.md
+under Learnings for what it bans and why it is the one gate that opens a `.md` file. `--no-install` keeps an unverified build out of `/Applications`; the last
 line must name the signing identity.
 
 **Neither gate says the band is on screen.** A green suite and a clean build are consistent with a
