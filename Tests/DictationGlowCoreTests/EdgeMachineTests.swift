@@ -60,6 +60,17 @@ final class EdgeMachineTests: XCTestCase {
     XCTAssertEqual(seen(), [.listening])
   }
 
+  // Fail closed: an announced start is not a live microphone. A start that stalls in
+  // DictationIM posts this and never StartedListening.
+  func testWillStartListeningAloneDoesNotRaiseTheBand() {
+    let (machine, clock, seen) = makeMachine()
+    machine.handle(.didEnterDictationMode)
+    machine.handle(.willStartListening)
+    clock.advance(10)
+    XCTAssertEqual(seen(), [])
+    XCTAssertEqual(machine.state, .idle)
+  }
+
   // Edge: repeated starts are one transition, not many (R4 has no intermediate states).
   func testRepeatedStartedListeningEmitsListeningOnce() {
     let (machine, _, seen) = makeMachine()

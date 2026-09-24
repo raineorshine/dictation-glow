@@ -34,6 +34,16 @@ Measured latencies, notification ahead of the audio:
 
 So a stop becomes pending, and a start arriving within 150ms cancels it. That window is a constant, not an adaptive measure; both observed sessions fell well inside it.
 
+## A start is not raised until it is listening
+
+`WillStartListening` announces a start that may never happen. On 2026-09-24 every Dictation start for
+forty seconds reached `WillStartListening` and stopped: `DictationIM` logged `IMKServer Stall detected`
+about 6 seconds after each one, blocked on the target app — the Claude app, 1.2 seconds after an
+archive — answering where the insertion point was. The HUD hung and `StartedListening` never
+arrived. The band was raised on `WillStartListening` at the time, so it stayed up over a microphone
+that was not live, which read as the band and the shortcut breaking Dictation. The band now waits for
+`StartedListening`; `WillStartListening` only cancels a pending stop.
+
 ## What was ruled out
 
 **`kAudioDevicePropertyDeviceIsRunningSomewhere`** reads `0` for the whole of a dictation session, not merely at the stop. Native Dictation captures through a `corespeechd` audio tap and never opens the default input device, so the property cannot carry either edge.

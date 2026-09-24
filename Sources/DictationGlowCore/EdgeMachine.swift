@@ -59,12 +59,21 @@ public final class EdgeMachine {
 
   public func handle(_ event: DictationEvent) {
     switch event {
-    case .startedListening, .willStartListening:
+    case .startedListening:
       // A start cancels a pending stop whether or not the band is currently up: that is the
       // whole of R11a.
       pendingStop?.cancel()
       pendingStop = nil
       transition(to: .listening)
+    case .willStartListening:
+      // Announces a start, and does not mean one happened. A start that stalls stops here:
+      // DictationIM blocks on the target app's reply for where the insertion point is, and
+      // when that app is busy -- measured, the Claude app just after an archive, 6s per
+      // query for 40s -- the HUD hangs and `StartedListening` never comes. Raising here drew
+      // the band for the whole stall over a microphone that was not live. It still cancels
+      // a pending stop, since it is part of the sequence R11a describes.
+      pendingStop?.cancel()
+      pendingStop = nil
     case .didExitDictationMode:
       guard state == .listening, pendingStop == nil else { return }
       pendingStop = clock.schedule(after: Self.coalescingWindow) { [weak self] in
