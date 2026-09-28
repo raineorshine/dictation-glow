@@ -1,6 +1,6 @@
 ---
 name: ship
-description: "Finish a change in the dictation-glow repo: build signed, run the tests, commit, rebase on origin/main, squash, push to origin/main, fast-forward the local main, install and relaunch. Use only when the user explicitly asks for the change to be shipped, landed, or pushed to main — never because a change looks finished."
+description: "Finish a change in the dictation-glow repo: build signed, run the tests, commit, rebase on origin/main, squash, push to origin/main, fast-forward the local main, install and relaunch, extract the session's learnings, and archive the session. Use only when the user explicitly asks for the change to be shipped, landed, or pushed to main — never because a change looks finished."
 ---
 
 # Ship (finish a change → land it on origin/main)
@@ -124,15 +124,7 @@ The push in step 5 is what counts as shipped, whatever step 6 managed, so the pr
 and not at the start. Nothing needs restoring if the ship falls over, since it was never set. Say
 nothing about it in the response.
 
-### 8. Post-ship
-
-If the user confirms this worktree is no longer needed:
-
-```bash
-BRANCH=$(git branch --show-current) && MAIN=$(git worktree list | head -1 | awk '{print $1}') && git -C "$MAIN" worktree remove <this-worktree-path> && git -C "$MAIN" branch -d "$BRANCH"
-```
-
-### 9. Extract the learnings
+### 8. Extract the learnings
 
 Invoke the `learn` skill. Whatever the session learned about the app, the tree or the workflow is
 still in context now and in nobody's an hour later, so this is the last stage of shipping and needs
@@ -148,6 +140,22 @@ If `learn` finds nothing worth recording, that is a normal outcome — say so in
 
 `learn` puts `📚 ` on the title; put `🚀 ` back when it finishes.
 
-### 10. Print the completion message
+### 9. Print the completion message
 
 Print `🚀 Shipped` as the last line of the response, after the learn report.
+
+### 10. Archive the session
+
+Last of all, after `learn` has landed its commit and `🚀 ` is back on the title, archive this session: `mcp__ccd_session_mgmt__archive_session` with `"self"`
+and a reason naming the ship. It is the final tool call of the ship, made in the same response as the completion message and after it — nothing after the
+archive reaches the user. Asking to ship is the agreement to archive; do not ask again.
+
+Skip it when `learn` or `learn-organize` invoked this ship: the session goes on after that ship. A
+ship that fell over short of the push in step 5 is still work in progress and keeps its session.
+
+**The archive refuses while anything of this session is still pending** — a background task, an armed
+waiter, a scheduled wakeup left as a fallback. Stop each one first (a pending wakeup is cancelled with
+`ScheduleWakeup` and `stop: true`); if it still refuses, the user archives from the sidebar.
+
+Archiving removes the session's worktree, if it has one. The branch outlives it, and the session is
+reopened from the Archived list if it is ever needed again.

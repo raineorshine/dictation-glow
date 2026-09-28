@@ -77,7 +77,7 @@ How the app knows Dictation is listening, the measured latencies, what was ruled
 
 [`ship`](.claude/skills/ship/SKILL.md) lands a change on `origin/main`: gates, the writing the change
 owes, rebase, squash, push, then install and *relaunch* — the accessory launched at login keeps the
-old binary until it is restarted. Squash to one commit and push; no PR, no merge commits. It runs
+old binary until it is restarted — then extracts learnings and archives the session. Squash to one commit and push; no PR, no merge commits. It runs
 only when the user asks for it.
 
 ## Learnings
