@@ -77,6 +77,7 @@ public final class GlowOverlay {
       fade(window, from: 1, to: 0, duration: duration) { [weak self] in
         guard let self, !self.visible, self.generation == issued else { return }
         window.orderOut(nil)
+        Self.releaseAllSpaces(on: window)
       }
     }
   }
@@ -155,24 +156,28 @@ public final class GlowOverlay {
     .canJoinAllSpaces, .stationary, .fullScreenAuxiliary,
   ]
 
-  /// Says it again, to a window that has already been told.
+  /// Joins every Space there is now, on every rebuild.
   ///
   /// A window's membership drifts: a long-lived band window is registered with the window
   /// server against the Spaces that existed when it was born, and it is not carried into one
-  /// created afterwards -- measured, on a band window that had been up for hours, as
-  /// membership in the current Space alone while a window created minutes earlier from the
-  /// same binary held both. From the outside that is exactly the reported symptom, and from
-  /// inside the process `collectionBehavior` still reads as `.canJoinAllSpaces`, so nothing
-  /// in the app can tell that the registration has gone stale.
+  /// created afterwards -- measured, on a band window that had been up for days, as
+  /// membership in the first Space alone while the user dictated on the second. From inside
+  /// the process `collectionBehavior` still reads as `.canJoinAllSpaces`, so nothing in the
+  /// app can tell that the registration has gone stale.
   ///
-  /// Cleared before it is set so the assignment is a change rather than a no-op: a setter
-  /// that short-circuits on an equal value would never reach the window server, which is the
-  /// one place the stale registration lives. Measured as harmless on a healthy window -- it
-  /// keeps every Space it had and does not blink -- and as an immediate repair on a drifted
-  /// one, whether it is ordered in at the time or not.
+  /// Only a change reaches the window server, and AppKit commits the value a run-loop turn
+  /// ends with: clearing and re-setting in the same turn is no change at all, and was measured
+  /// leaving a drifted window exactly where it was. So the release happens when the band is
+  /// ordered away (`releaseAllSpaces`), and this -- a turn or more later, on the next show --
+  /// is a genuine change that registers the window against the Spaces that exist now.
   private static func assertAllSpaces(on window: NSWindow) {
-    window.collectionBehavior = []
     window.collectionBehavior = allSpaces
+  }
+
+  /// The other half of `assertAllSpaces`: an ordered-out band gives up every Space, so the
+  /// next show re-registers it rather than repeating a value the server already holds.
+  private static func releaseAllSpaces(on window: NSWindow) {
+    window.collectionBehavior = allSpaces.subtracting(.canJoinAllSpaces)
   }
 
   private static func makeWindow(profile: BandGeometry.Profile) -> NSWindow {

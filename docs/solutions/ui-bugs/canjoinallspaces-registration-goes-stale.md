@@ -1,7 +1,7 @@
 ---
 title: canJoinAllSpaces goes stale on a long-lived window, so the band shows on one Space only
 date: 2026-09-21
-last_updated: 2026-09-21
+last_updated: 2026-09-30
 category: ui-bugs
 module: overlay
 problem_type: ui_bug
@@ -81,6 +81,37 @@ private static func assertAllSpaces(on window: NSWindow) {
 Measured on a healthy window: it keeps every Space it had, stays ordered in, and does not blink.
 Measured on a drifted one: membership is restored immediately, whether the window is ordered in at
 the time or not.
+
+**Superseded — this fix did not repair anything in the shipped app.** Nine days later the installed
+instance, up five days with this code in it, had its band window registered on Space 1 alone while
+the user dictated on Space 3. AppKit commits the value a run-loop turn ends with, so `[]` followed
+by the same value in one turn is no change and never reaches the window server. Driven against the
+shipped `GlowOverlay` — show, drift by hand, hide, show — the second show left the window at `[1]`.
+Whatever the measurement above exercised, it was not two assignments in one turn.
+
+Measured on raw windows, each drifted to `[1]` from `[1, 3]`:
+
+| Repair                                              | After  |
+| --------------------------------------------------- | ------ |
+| clear, set, same turn (the fix above)               | [1]    |
+| `.moveToActiveSpace`, then all Spaces, same turn    | [1]    |
+| order out, clear, order in, set, same turn          | [1]    |
+| clear, set 0.2 s later                              | [1, 3] |
+| drop `.canJoinAllSpaces` only, restore 0.2 s later  | [1, 3] |
+
+The replacement splits the change across the band's own lifecycle: `releaseAllSpaces` drops
+`.canJoinAllSpaces` when the hide completes and orders the window out, and `assertAllSpaces`
+restores it on the next show, which is always a later turn. The same harness then read:
+
+```
+1. after show:        spaces=[1, 3] behavior=273
+2. drifted by hand:   spaces=[1]    behavior=273
+3. after hide:        spaces=[1]    behavior=272
+4. after show again:  spaces=[1, 3] behavior=273
+```
+
+A window that drifts while the band is up is not repaired until the next hide and show; drift was
+only ever seen on a window that had been idle for hours.
 
 ## Verification
 
