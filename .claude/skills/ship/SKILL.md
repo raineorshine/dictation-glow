@@ -95,12 +95,13 @@ was lost: back to step 3, redo step 4 onto the new base, and push again.
 ### 6. Fast-forward the local main, install, and relaunch
 
 ```bash
-MAIN=$(git worktree list | head -1 | awk '{print $1}') && git -C "$MAIN" merge --ff-only origin/main
+git fetch origin main && MAIN=$(git worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} $0=="branch refs/heads/main"{print w}') && if [ -z "$MAIN" ]; then git fetch origin main:main; elif [ -n "$(git -C "$MAIN" status --porcelain --untracked-files=no)" ]; then echo "local main left behind: $MAIN has local changes"; else git -C "$MAIN" merge --ff-only origin/main; fi
 ```
 
 **A branch holding commits the main checkout also has diverges it by being shipped.** Step 4 rewrote
 them into one, so the fast-forward can refuse although nothing is unshipped. Install from the
-worktree in that case, which is what was pushed, and leave the main checkout's ref alone.
+worktree, which is what was pushed, in that case or when it reports local changes, and leave the main
+checkout's ref alone.
 
 ```bash
 ./build.sh
